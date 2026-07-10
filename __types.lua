@@ -1,0 +1,462 @@
+---@class NotificationData
+---@field id? string | number
+---@field title? string
+---@field description? string
+---@field duration? number
+---@field showDuration? boolean
+---@field position? 'top' | 'top-right' | 'top-left' | 'bottom' | 'bottom-right' | 'bottom-left' | 'center-right' | 'center-left'
+---@field type? 'inform' | 'error' | 'success'
+---@field style? table;
+---@field icon? string | [string, string]
+---@field iconColor? string
+---@field iconAnimation? 'spin' | 'spinPulse' | 'spinReverse' | 'pulse' | 'beat' | 'fade' | 'beatFade' | 'bounce' | 'shake'
+---@field alignIcon? 'top' | 'center'
+---@field sound? { bank?: string; set: string; name: string }
+
+---@class PRDebug
+---@field isEnabled fun(): boolean
+---@field setEnabled fun(state: boolean): boolean
+---@field log fun(...: any)
+---@field info fun(...: any)
+---@field success fun(...: any)
+---@field warn fun(...: any)
+---@field warning fun(...: any)
+---@field error fun(...: any)
+
+---@class PRDatabase
+---@field driver string
+---@field resource string?
+---@field context string
+---@field isReady fun(): boolean
+---@field GetResourceName fun(): string?
+---@field query fun(query: string, parameters?: table, cb?: fun(result: table|nil)): table|nil
+---@field read fun(query: string, parameters?: table, cb?: fun(result: table|nil)): table|nil
+---@field fetch fun(query: string, parameters?: table, cb?: fun(result: table|nil)): table|nil
+---@field fetchAll fun(query: string, parameters?: table, cb?: fun(result: table|nil)): table|nil
+---@field single fun(query: string, parameters?: table, cb?: fun(result: table|nil)): table|nil
+---@field scalar fun(query: string, parameters?: table, cb?: fun(result: any)): any
+---@field execute fun(query: string, parameters?: table, cb?: fun(result: any)): any
+---@field update fun(query: string, parameters?: table, cb?: fun(result: any)): any
+---@field write fun(query: string, parameters?: table, cb?: fun(result: any)): any
+---@field insert fun(query: string, parameters?: table, cb?: fun(result: number|nil)): number|nil
+---@field transaction fun(queries: table, parameters?: table, cb?: fun(result: boolean|nil)): boolean|nil
+---@field run fun(query: string, parameters?: table, cb?: fun(result: any)): any
+---@field auto fun(query: string, parameters?: table, cb?: fun(result: any)): any
+
+---@class PRCallback
+---@field register fun(name: string, cb: fun(source: number, ...: any): any)
+---@field trigger? fun(name: string, cb: fun(...: any), ...: any): string
+---@field await? fun(name: string, timeout?: number|boolean, ...: any): any
+---@field triggerClient? fun(target: number, name: string, cb: fun(...: any), ...: any): string
+---@field awaitClient? fun(target: number, name: string, timeout?: number|boolean, ...: any): any
+
+---@class PRInventory
+---@field RegisterUsableItem? fun(item: string, cb: fun(source: number, itemData: table): any, options?: table): boolean
+---@field AddItem? fun(inv: any, item: string, count?: number, metadata?: table, slot?: number, cb?: fun(success: boolean)): boolean
+---@field RemoveItem? fun(inv: any, item: string, count?: number, metadata?: table, slot?: number): boolean
+---@field HasItem? fun(inv: any, item: string|string[], amount?: number, metadata?: table, strict?: boolean): boolean
+---@field Items? fun(itemName?: string): table|nil
+---@field GetSlot? fun(inv: any, slot: number): table?
+---@field GetItemBySlot? fun(inv: any, slot: number): table?
+---@field GetItem? fun(inv: any, item: string, metadata?: table, returnsCount?: boolean): table|number|nil
+---@field GetItemCount? fun(inv: any, itemName: string, metadata?: table, strict?: boolean): number
+---@field GetItemInfo? fun(itemName: string): table?
+---@field GetItemLabel? fun(itemName: string): string?
+---@field GetItemSlots? fun(inv: any, itemName: string, metadata?: table, strict?: boolean): table
+---@field GetSlotForItem? fun(inv: any, itemName: string, metadata?: table, strict?: boolean): number?
+---@field GetSlotIdWithItem? fun(inv: any, itemName: string, metadata?: table, strict?: boolean): number?
+---@field GetSlotIdsWithItem? fun(inv: any, itemName: string, metadata?: table, strict?: boolean): number[]
+---@field GetSlotWithItem? fun(inv: any, itemName: string, metadata?: table, strict?: boolean): table?
+---@field GetSlotsWithItem? fun(inv: any, itemName: string, metadata?: table, strict?: boolean): table[]
+---@field GetInventory? fun(inv: any, owner?: any): table?
+---@field GetInventoryItems? fun(inv: any, owner?: any): table[]
+---@field Search? fun(inv: any, search: string, item?: string, metadata?: table): any
+---@field SetMetadata? fun(inv: any, slot: number, metadata: table): any
+---@field SetItemMetadata? fun(inv: any, slot: number, metadata: table): any
+
+---@class PRTarget
+---@field addModel? fun(models: string|string[]|number|number[], options: table)
+---@field removeModel? fun(models: string|string[]|number|number[], optionNames?: string|string[])
+---@field addEntity? fun(netIds: number|number[], options: table)
+---@field removeEntity? fun(netIds: number|number[], optionNames?: string|string[])
+---@field addLocalEntity? fun(entities: number|number[], options: table)
+---@field removeLocalEntity? fun(entities: number|number[], optionNames?: string|string[])
+
+---@class VehicleProperties
+---@field model? number
+---@field plate? string
+---@field plateIndex? number
+---@field lockState? number
+---@field bodyHealth? number
+---@field engineHealth? number
+---@field tankHealth? number
+---@field fuelLevel? number
+---@field oilLevel? number
+---@field dirtLevel? number
+---@field paintType1? number
+---@field paintType2? number
+---@field color1? number|number[]
+---@field color2? number|number[]
+---@field pearlescentColor? number
+---@field interiorColor? number
+---@field dashboardColor? number
+---@field wheelColor? number
+---@field wheelWidth? number
+---@field wheelSize? number
+---@field wheels? number
+---@field windowTint? number
+---@field xenonColor? number
+---@field neonEnabled? boolean[]
+---@field neonColor? number[]
+---@field extras? table<number|string, 0|1>
+---@field tyreSmokeColor? number[]
+---@field modSpoilers? number
+---@field modFrontBumper? number
+---@field modRearBumper? number
+---@field modSideSkirt? number
+---@field modExhaust? number
+---@field modFrame? number
+---@field modGrille? number
+---@field modHood? number
+---@field modFender? number
+---@field modRightFender? number
+---@field modRoof? number
+---@field modEngine? number
+---@field modBrakes? number
+---@field modTransmission? number
+---@field modHorns? number
+---@field modSuspension? number
+---@field modArmor? number
+---@field modNitrous? number
+---@field modTurbo? boolean
+---@field modSubwoofer? boolean
+---@field modSmokeEnabled? boolean
+---@field modHydraulics? boolean
+---@field modXenon? boolean
+---@field modFrontWheels? number
+---@field modBackWheels? number
+---@field modCustomTiresF? boolean
+---@field modCustomTiresR? boolean
+---@field modPlateHolder? number
+---@field modVanityPlate? number
+---@field modTrimA? number
+---@field modOrnaments? number
+---@field modDashboard? number
+---@field modDial? number
+---@field modDoorSpeaker? number
+---@field modSeats? number
+---@field modSteeringWheel? number
+---@field modShifterLeavers? number
+---@field modAPlate? number
+---@field modSpeakers? number
+---@field modTrunk? number
+---@field modHydrolic? number
+---@field modEngineBlock? number
+---@field modAirFilter? number
+---@field modStruts? number
+---@field modArchCover? number
+---@field modAerials? number
+---@field modTrimB? number
+---@field modTank? number
+---@field modWindows? number
+---@field modDoorR? number
+---@field modLivery? number
+---@field modRoofLivery? number
+---@field modLightbar? number
+---@field livery? number
+---@field windows? number[]
+---@field doors? number[]
+---@field tyres? table<number|string, 1|2>
+---@field bulletProofTyres? boolean
+---@field driftTyres? boolean
+
+---@class PRFivemVehicleProperties
+---@field get fun(vehicle: number): VehicleProperties?
+---@field set fun(vehicle: number, props: VehicleProperties, fixVehicle?: boolean): boolean
+---@field setNetId? fun(netId: number, props: VehicleProperties, target?: number, fixVehicle?: boolean): boolean
+
+---@class PRFivemNet
+---@field isValidNetId fun(netId: number): boolean
+---@field getNetId fun(entity: number): number?
+---@field getEntity fun(netId: number, timeout?: number): number?
+---@field getVehicle fun(netId: number, timeout?: number): number?
+---@field resolveVehicle fun(vehicleOrNetId: number, timeout?: number): number?, number?
+---@field getOwner fun(entityOrNetId: number, timeout?: number): number?
+
+---@class PRFivemVehicleCache
+---@field set fun(vehicleOrNetId: number, data: table): boolean
+---@field get fun(vehicleOrNetId: number): table?
+---@field getByPlate fun(plate: string): table?
+---@field clear fun(vehicleOrNetId: number)
+---@field clearAll fun()
+---@field getStateKey fun(name: string): string
+---@field setState fun(vehicle: number, name: string, value: any, replicated?: boolean): boolean
+---@field getState fun(vehicle: number, name: string): any
+---@field setPersistentMeta fun(vehicle: number, meta: table): boolean
+---@field getPersistentMeta fun(vehicle: number): table?
+
+---@class PRFivemVehicle
+---@field cache PRFivemVehicleCache
+---@field net PRFivemNet
+---@field getNetId fun(entity: number): number?
+---@field getEntity fun(netId: number, timeout?: number): number?
+---@field getVehicle fun(netId: number, timeout?: number): number?
+---@field resolve fun(vehicleOrNetId: number, timeout?: number): number?, number?
+---@field getOwner fun(entityOrNetId: number, timeout?: number): number?
+---@field getProperties fun(vehicle: number): VehicleProperties?
+---@field setProperties fun(vehicle: number, props: VehicleProperties, fixVehicle?: boolean): boolean
+
+---@class PRKeybindData
+---@field name string
+---@field description string
+---@field defaultKey? string|string[]
+---@field key? string|string[]
+---@field keys? string|string[]
+---@field combo? string|string[]
+---@field defaultMapper? string
+---@field secondaryKey? string|string[]
+---@field secondaryKeys? string|string[]
+---@field secondaryCombo? string|string[]
+---@field secondaryMapper? string
+---@field disabled? boolean
+---@field onPressed? fun(self: PRKeybind)
+---@field onReleased? fun(self: PRKeybind)
+
+---@class PRKeybind
+---@field name string
+---@field description string
+---@field currentKey string
+---@field defaultKey string
+---@field disabled boolean
+---@field isPressed boolean
+---@field disable fun(self: PRKeybind, toggle: boolean)
+---@field destroy fun(self: PRKeybind)
+---@field getCurrentKey fun(self: PRKeybind): string
+---@field isControlPressed fun(self: PRKeybind): boolean
+
+---@class PRAddKeybind
+---@field list table<string, PRKeybind>
+---@field get fun(name: string): PRKeybind?
+---@field remove fun(name: string): boolean
+
+---@class PRCommandParamDefinition
+---@field name string
+---@field type? 'string'|'number'|'playerId'|'player'|'boolean'|'bool'|'longString'
+---@field help? string
+---@field optional? boolean
+
+---@class PRCommandParam : PRCommandParamDefinition
+---@field index number
+---@field rawValue? string
+---@field value any
+---@field valid boolean
+---@field provided boolean
+---@field missing boolean
+
+---@class PRCommandParams
+---@field values table<string, any>
+---@field raw string
+
+---@class PRCommandProperties
+---@field help? string
+---@field params? PRCommandParamDefinition[]
+---@field restricted? boolean|string|string[]
+---@field onError? fun(source: number, err: string, args: table, raw: string)
+
+---@class PRAddCommand
+---@field add fun(commandName: string|string[], properties: PRCommandProperties|false, cb: fun(source: number, params: PRCommandParams, raw: string, values: table<string, any>)): boolean|table, string?
+---@field register fun(commandName: string|string[], properties: PRCommandProperties|false, cb: fun(source: number, params: PRCommandParams, raw: string, values: table<string, any>)): boolean|table, string?
+---@field addCommand fun(commandName: string|string[], properties: PRCommandProperties|false, cb: fun(source: number, params: PRCommandParams, raw: string, values: table<string, any>)): boolean|table, string?
+
+---@class PRAce
+---@field parseConvarList fun(raw: string): table<string, boolean>
+---@field getIdentifiers fun(source: number): table
+---@field hasIdentifier fun(source: number, identifier: string): boolean
+---@field isWhitelisted fun(source: number, whitelistName: string): boolean
+---@field inWhitelist fun(source: number, whitelistName: string): boolean
+---@field isPlayerAceAllowed fun(source: number, aceName: string): boolean
+---@field hasAce fun(source: number, aceName: string): boolean
+---@field isCommandAllowed fun(source: number, commandName: string): boolean
+---@field hasCommandAce fun(source: number, commandName: string): boolean
+---@field ensureAce fun(principal: string, aceName: string): boolean
+---@field ensureCommandAce fun(principal: string, commandName: string): boolean
+---@field hasFrameworkAccess fun(source: number, options: table): boolean
+---@field canAccess fun(source: number, options: table): boolean
+---@field addAce fun(principal: string|number, aceName: string, allow?: boolean): void
+---@field removeAce fun(principal: string|number, aceName: string, allow?: boolean): void
+---@field addPrincipal fun(child: string|number, parent: string): void
+---@field removePrincipal fun(child: string|number, parent: string): void
+
+---@class PRFivemStreamingInteractionAnim
+---@field dict? string
+---@field animDict? string
+---@field clip? string
+---@field name? string
+---@field scenario? string
+---@field duration? number
+---@field flags? number
+---@field timeout? number
+---@field advanced? boolean
+---@field wait? boolean
+---@field blendIn? number
+---@field blendOut? number
+---@field playbackRate? number
+---@field rotX? number
+---@field rotY? number
+---@field rotZ? number
+---@field lockX? boolean
+---@field lockY? boolean
+---@field lockZ? boolean
+
+---@class PRFivemStreamingInteractionPosition
+---@field coords? vector3|vector4|table
+---@field anchor? 'hood'|'trunk'|'front'|'back'|'left'|'right'|'driverDoor'|'passengerDoor'|'driverRearDoor'|'passengerRearDoor'|'center'|string
+---@field bone? string
+---@field offset? vector3|vector4|table
+---@field distance? number
+---@field zOffset? number
+---@field heading? number
+---@field faceTarget? boolean
+---@field moveTo? boolean
+---@field timeout? number
+---@field speed? number
+---@field arriveDistance? number
+---@field maxDistance? number
+---@field settleTime? number
+---@field ground? boolean
+---@field groundZ? boolean
+---@field includeWater? boolean
+---@field clearBeforeAnim? boolean
+
+---@class PRFivemStreamingInteractionVehicle
+---@field door? number|number[]
+---@field doors? number|number[]
+---@field openDoor? boolean
+---@field closeDoor? boolean
+---@field waitAfterOpen? number
+---@field loose? boolean
+---@field instantly? boolean
+
+---@class PRFivemStreamingInteractionData
+---@field target? number
+---@field entity? number
+---@field vehicle? number|PRFivemStreamingInteractionVehicle
+---@field object? number
+---@field prop? number
+---@field ped? number
+---@field player? number
+---@field pickup? number
+---@field with? number
+---@field type? 'vehicle'|'ped'|'player'|'object'|'prop'|'entity'|'pickup'|string
+---@field serverId? number
+---@field actor? number
+---@field pedEntity? number
+---@field anim? PRFivemStreamingInteractionAnim
+---@field animation? PRFivemStreamingInteractionAnim
+---@field position? PRFivemStreamingInteractionPosition
+---@field duration? number
+---@field vehicleOptions? PRFivemStreamingInteractionVehicle
+---@field vehicleData? PRFivemStreamingInteractionVehicle
+---@field vehicleAction? PRFivemStreamingInteractionVehicle
+---@field cleanup? table
+---@field onBeforeMove? fun(ped: number, entity: number?, coords: vector3?, heading: number?, entityType: string?): boolean?
+---@field onBeforeStart? fun(ped: number, entity: number?, coords: vector3?, heading: number?, entityType: string?): boolean?
+---@field onStart? fun(ped: number, entity: number?, coords: vector3?, heading: number?, entityType: string?)
+---@field onFinish? fun(ped: number, entity: number?, coords: vector3?, heading: number?, entityType: string?)
+
+---@class PRFivemStreaming
+---@field requestModel fun(model: string|number, timeout?: number): boolean, number?
+---@field loadModel fun(model: string|number, timeout?: number): boolean, number?
+---@field releaseModel fun(model: string|number)
+---@field requestAnimDict fun(animDict: string, timeout?: number): boolean
+---@field loadAnimDict fun(animDict: string, timeout?: number): boolean
+---@field releaseAnimDict fun(animDict: string)
+---@field createObject fun(model: string|number, coords?: vector3, options?: table): number?, number?
+---@field createProp fun(model: string|number, coords?: vector3, options?: table): number?, number?
+---@field createPed fun(model: string|number, coords?: vector3, heading?: number, options?: table): number?, number?
+---@field createVehicle fun(model: string|number, coords?: vector3, heading?: number, options?: table): number?, number?
+---@field createEntity fun(placementType: string, model: string|number, coords?: vector3, heading?: number, options?: table): number?, number?
+---@field deleteEntity fun(entity: number): boolean
+---@field delete fun(entity: number): boolean
+---@field findGroundZ fun(coords?: vector3, options?: table): number, vector3, boolean
+---@field playAnim fun(data: PRFivemStreamingInteractionAnim|table, clip?: string, duration?: number, options?: table): boolean, table|string?
+---@field playAnimation fun(data: PRFivemStreamingInteractionAnim|table, clip?: string, duration?: number, options?: table): boolean, table|string?
+---@field playInteraction fun(data: PRFivemStreamingInteractionData): boolean, table|string?
+---@field performAction fun(data: PRFivemStreamingInteractionData): boolean, table|string?
+---@field playAction fun(data: PRFivemStreamingInteractionData): boolean, table|string?
+
+---@class PRFivem
+---@field net PRFivemNet
+---@field vehicleCache PRFivemVehicleCache
+---@field vehicle PRFivemVehicle
+---@field addKeybind fun(data: PRKeybindData): PRKeybind|false, string?
+---@field keybind fun(data: PRKeybindData): PRKeybind|false, string?
+---@field keybinds PRAddKeybind
+---@field addCommand fun(commandName: string|string[], properties: PRCommandProperties|false, cb: fun(source: number, params: PRCommandParams, raw: string, values: table<string, any>)): boolean|table, string?
+---@field command PRAddCommand
+---@field commands PRAddCommand
+---@field ace PRAce
+---@field permissions PRAce
+---@field streaming PRFivemStreaming
+---@field vehicleProperties PRFivemVehicleProperties
+---@field getVehicleProperties fun(vehicle: number): VehicleProperties?
+---@field setVehicleProperties fun(vehicle: number, props: VehicleProperties, fixVehicle?: boolean): boolean
+
+---@class PRLib
+---@field debug PRDebug
+---@field callback PRCallback
+---@field database PRDatabase
+---@field db PRDatabase
+---@field sql PRDatabase
+---@field inventory PRInventory
+---@field inventories PRInventory
+---@field target PRTarget
+---@field targets PRTarget
+---@field addKeybind fun(data: PRKeybindData): PRKeybind|false, string?
+---@field keybind fun(data: PRKeybindData): PRKeybind|false, string?
+---@field keybinds PRAddKeybind
+---@field addCommand fun(commandName: string|string[], properties: PRCommandProperties|false, cb: fun(source: number, params: PRCommandParams, raw: string, values: table<string, any>)): boolean|table, string?
+---@field command PRAddCommand
+---@field commands PRAddCommand
+---@field ace PRAce
+---@field permissions PRAce
+---@field fivem PRFivem
+---@field vehicleProperties PRFivemVehicleProperties
+---@field dui PRDui
+---@field duis PRDui
+
+---@class PRDui
+---@field create fun(options: table|string, width?: number, height?: number): table?
+---@field get fun(id: string): table?
+---@field list fun(): table<string, table>
+---@field destroy fun(target: string|table): boolean
+---@field setUrl fun(target: string|table, url: string): boolean
+---@field send fun(target: string|table, message: any): boolean
+---@field sendMessage fun(target: string|table, message: any): boolean
+---@field enableMouse fun(target: string|table, options?: table): boolean
+---@field disableMouse fun(target: string|table): boolean
+---@field toggleMouse fun(target: string|table, state?: boolean): boolean
+---@field drawSprite fun(target: string|table, options: table): boolean
+---@field startSprite fun(target: string|table, options: table): boolean
+---@field stopSprite fun(target: string|table): boolean
+---@field replaceTexture fun(target: string|table, options: table): boolean
+---@field removeReplaceTexture fun(target: string|table, options: table): boolean
+---@field renderTarget fun(target: string|table, options: table): boolean
+---@field stopRenderTarget fun(target: string|table): boolean
+---@field startPoly fun(target: string|table, options: table): boolean
+---@field stopPoly fun(target: string|table): boolean
+---@field focus fun(target: string|table, options?: table): boolean
+---@field unfocus fun(): boolean
+---@field setOpacity fun(target: string|table, opacity: number): boolean
+---@field setBrightness fun(target: string|table, brightness: number): boolean
+---@field builder PRDuiBuilder
+
+---@class PRDuiBuilder
+---@field startPoly fun(options?: table): boolean, table|string
+---@field createPoly fun(options?: table): table?, string?
+---@field startPoly4 fun(options?: table): boolean, table|string
+---@field createPoly4 fun(options?: table): table?, string?
+---@field startIdentifyPropTexture fun(options?: table): boolean, table|string
+---@field createReplaceTextureInteractive fun(options?: table): table?, table|string?
+---@field entityRenderTarget fun(entity: number, options?: table): table
+---@field textureReplacement fun(textureDict: string, textureName: string, options?: table): table
