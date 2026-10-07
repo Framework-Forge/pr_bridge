@@ -1,6 +1,6 @@
 # PR Bridge Functions
 
-## Contém 988 chamadas categorizadas por módulo e contexto: server, client e shared, sem explicações adicionais.
+## Contém 1100 chamadas categorizadas por módulo e contexto: server, client e shared.
 
 
 ## core
@@ -1190,3 +1190,141 @@
 - `pr_lib.fivem.vehicles.findByModelInRadius(model, coords, radius, options)`
 - `pr_lib.fivem.vehicles.findClosest(coords, radius, options)`
 - `pr_lib.fivem.vehicles.findClosestByModel(model, coords, radius, options)`
+
+
+## fivem.editorCamera
+
+### client
+- `pr_lib.editorCamera.getCameraTargetPosition()`
+- `pr_lib.editorCamera.updateCameraPosition()`
+- `pr_lib.editorCamera.handleCameraControls()`
+- `pr_lib.editorCamera.cursorLock()`
+- `pr_lib.editorCamera.start(targetEntity)`
+- `pr_lib.editorCamera.stop()`
+- `pr_lib.editorCamera.startFreecam(options)`
+- `pr_lib.editorCamera.updateFreecam(state, moveSpeed)`
+- `pr_lib.editorCamera.getFreecamTargetCoords(state, options)`
+- `pr_lib.editorCamera.stopFreecam(state)`
+- `pr_lib.editorCamera.isFreecamActive()`
+- `pr_lib.editorCamera.smoothTransitionToEntity(entity, targetRadius)`
+
+
+## fivem.gizmo
+
+### client
+- `pr_lib.gizmo.getDisplayBasis()`
+- `pr_lib.gizmo.getGizmoPosition()`
+- `pr_lib.gizmo.setOffset(off)`
+- `pr_lib.gizmo.getOffset()`
+- `pr_lib.gizmo.getGizmoWorldPosition()`
+- `pr_lib.gizmo.focusEditorCamera(silent)`
+- `pr_lib.gizmo.releaseEditorCamera(silent)`
+- `pr_lib.gizmo.start(entity, callback, offset, options)`
+- `pr_lib.gizmo.stop()`
+- `pr_lib.gizmo.setBeforeTransformCallback(callback)`
+- `pr_lib.gizmo.ResetPrecisionKeys()`
+- `pr_lib.gizmo.HasPrecisionRotationInput()`
+- `pr_lib.gizmo.isPrecisionMode()`
+- `pr_lib.gizmo.isFreeCameraMode()`
+- `pr_lib.gizmo.setFreeCameraMode(enabled, silent)`
+- `pr_lib.gizmo.toggleFreeCameraMode()`
+- `pr_lib.gizmo.applyControlLocks()`
+- `pr_lib.gizmo.setPrecisionMode(enabled, silent)`
+- `pr_lib.gizmo.togglePrecisionMode()`
+- `pr_lib.gizmo.setPrecisionModeProvider(callback)`
+- `pr_lib.gizmo.getPrecisionSpeed()`
+- `pr_lib.gizmo.setPrecisionSpeed(value)`
+- `pr_lib.gizmo.adjustPrecisionSpeed(delta)`
+- `pr_lib.gizmo.handlePrecisionToggleInput()`
+- `pr_lib.gizmo.handlePrecisionSpeedInput()`
+- `pr_lib.gizmo.toggleMode()`
+- `pr_lib.gizmo.getSpeedModifier()`
+- `pr_lib.gizmo.getMousePosition()`
+- `pr_lib.gizmo.getAxisDirection(axis, keepSign)`
+- `pr_lib.gizmo.getPlaneNormal(plane)`
+- `pr_lib.gizmo.getRotationRingBasis(axis)`
+- `pr_lib.gizmo.getColorAlpha(axisName, colorSet)`
+- `pr_lib.gizmo.checkPointNearMouse(worldPoint, mx, my)`
+- `pr_lib.gizmo.checkLineSegment(from, to, mx, my, samples)`
+- `pr_lib.gizmo.checkLineSegmentNearMouse(from, to, mx, my, threshold)`
+- `pr_lib.gizmo.checkPlane(mx, my, center, planeName)`
+- `pr_lib.gizmo.checkCenterSquare(mx, my, center)`
+- `pr_lib.gizmo.updateHover(mx, my)`
+- `pr_lib.gizmo.beginAxisDrag(axis, mx, my)`
+- `pr_lib.gizmo.setCoords(x, y, z)`
+- `pr_lib.gizmo.placeEntityOnGround()`
+- `pr_lib.gizmo.updateAxisDrag(mx, my)`
+- `pr_lib.gizmo.beginPlaneDrag(plane, mx, my)`
+- `pr_lib.gizmo.beginFreeDrag(mx, my)`
+- `pr_lib.gizmo.updateFreeDrag(mx, my)`
+- `pr_lib.gizmo.updatePlaneDrag(mx, my)`
+- `pr_lib.gizmo.beginRotationDrag(axis, mx, my)`
+- `pr_lib.gizmo.updateRotationDrag(mx, my)`
+- `pr_lib.gizmo.drawArrow(origin, axis, colorSet)`
+- `pr_lib.gizmo.drawPlaneSquare(origin, plane, colorSet, isFacing)`
+- `pr_lib.gizmo.drawCenterSquare(origin)`
+- `pr_lib.gizmo.drawRotationHandle(point, color)`
+- `pr_lib.gizmo.drawRotationArrow(origin, dir, color)`
+- `pr_lib.gizmo.drawRotationAxisGuides(origin)`
+- `pr_lib.gizmo.drawRotationRing(origin, axis, colorSet, distance)`
+- `pr_lib.gizmo.drawDragLine()`
+- `pr_lib.gizmo.handleTranslation(dx, dy)`
+- `pr_lib.gizmo.draw()`
+- `pr_lib.gizmo.update()`
+- `pr_lib.gizmo.HandlePropControls(offsetForward, offsetRight, offsetZ, rotX, rotY, rotZ, manualZ, precisionMode, speedMultiplier)`
+- `pr_lib.gizmo.HandlePrecisionRotation(rotation, rotSpeed, normalizeFn)`
+- `pr_lib.gizmo.getPreviewData()`
+- `pr_lib.gizmo.buildPreviewText()`
+- `pr_lib.gizmo.buildEntityInfoText()`
+- `pr_lib.gizmo.drawPreview(force)`
+- `pr_lib.gizmo.hidePreview()`
+- `pr_lib.gizmo.invalidateKeybinds()`
+- `pr_lib.gizmo.drawKeybinds()`
+
+
+## fivem.devlaser
+
+### client
+- `pr_lib.devlaser.inspectEntity(entity)`
+- `pr_lib.devlaser.getTarget()`
+- `pr_lib.devlaser.requestControl(entity, timeout)`
+- `pr_lib.devlaser.logEntityAction(action, entity, value, extra)`
+- `pr_lib.devlaser.moveWithGizmo(entity)`
+- `pr_lib.devlaser.isActive()`
+- `pr_lib.devlaser.start(options)`
+- `pr_lib.devlaser.stop(silent)`
+- `pr_lib.devlaser.toggle(options)`
+- `pr_lib.devlaser.Start(options)`
+- `pr_lib.devlaser.Stop(silent)`
+- `pr_lib.devlaser.Toggle(options)`
+- `pr_lib.devlaser.IsActive()`
+- `pr_lib.devlaser.GetTarget()`
+- `pr_lib.devlaser.InspectEntity(entity)`
+- `pr_lib.devlaser.MoveWithGizmo(entity)`
+
+
+## fivem.instructionalButtons
+
+### client
+- `pr_lib.fivem.instructionalButtons.create(buttons, options)`
+- `pr_lib.fivem.instructionalButtons.show(buttons, options)`
+- `pr_lib.fivem.instructionalButtons.showSimple(label, control, options)`
+- `pr_lib.fivem.instructionalButtons.showClickable(label, control, controlId, options)`
+- `buttonInstance:refresh()`
+- `buttonInstance:draw()`
+- `buttonInstance:dispose()`
+
+
+## fivem.identifiers
+
+### server
+- `pr_lib.identifiers.getByType(source, identifierType)`
+- `pr_lib.identifiers.getAll(source)`
+- `pr_lib.identifiers.getPrimaryLicense(source)`
+- `pr_lib.identifiers.getLicenseSet(source, extraLicenses)`
+- `pr_lib.identifiers.has(source, identifier)`
+- `pr_lib.identifiers.GetByType(source, identifierType)`
+- `pr_lib.identifiers.GetAll(source)`
+- `pr_lib.identifiers.GetPrimaryLicense(source)`
+- `pr_lib.identifiers.GetLicenseSet(source, extraLicenses)`
+- `pr_lib.identifiers.Has(source, identifier)`
