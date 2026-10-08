@@ -102,3 +102,6 @@ Use cache for heavy payloads and temporary work data. Use replicated statebags o
 | qb-core       | qb-inventory    | GTA Default           |               |               |                  |                         |               | wasabi_carlock     |
 
 ---
+
+
+corrigir:

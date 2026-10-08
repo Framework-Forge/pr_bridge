@@ -1,0 +1,794 @@
+---UI nativa: RegisterContext â†’ Renderer â†’ NUI host â†’ Vue
+
+local BRIDGE = "pr_bridge"
+local resourceName = GetCurrentResourceName()
+local MenuAdapter = Bridge.menus
+
+local Renderer = PRCore.load("@pr_bridge/interface/client/renderer", _ENV)
+local Context = PRCore.load("@pr_bridge/interface/client/modules/context", _ENV)(Renderer)
+local Alert = PRCore.load("@pr_bridge/interface/client/modules/alert", _ENV)(Renderer)
+local Input = PRCore.load("@pr_bridge/interface/client/modules/input", _ENV)(Renderer)
+local Notify = PRCore.load("@pr_bridge/interface/client/modules/notify", _ENV)(Renderer)
+local Bubble = PRCore.load("@pr_bridge/interface/client/modules/bubble", _ENV)()
+local TextUI = PRCore.load("@pr_bridge/interface/client/modules/textui", _ENV)(Renderer)
+local Radial = PRCore.load("@pr_bridge/interface/client/modules/radial", _ENV)(Renderer)
+
+local UI = {
+    renderer = Renderer,
+    modules = {
+        context = Context,
+        alert = Alert,
+        input = Input,
+        notify = Notify,
+        bubble = Bubble,
+        textui = TextUI,
+        radial = Radial,
+    },
+
+    RegisterContext = Context.RegisterContext,
+    registerContext = Context.registerContext,
+    ShowContext = Context.ShowContext,
+    showContext = Context.showContext,
+    HideContext = Context.HideContext,
+    hideContext = Context.hideContext,
+    GetOpenContextMenu = Context.GetOpenContextMenu,
+    getOpenContextMenu = Context.getOpenContextMenu,
+
+    AlertDialog = Alert.AlertDialog,
+    alertDialog = Alert.AlertDialog,
+    InputDialog = Input.InputDialog,
+    inputDialog = Input.InputDialog,
+    Notify = Notify.Notify,
+    notify = Notify.Notify,
+    NotifyBubble = Bubble.NotifyBubble,
+    notifyBubble = Bubble.NotifyBubble,
+    HideNotifyBubble = Bubble.HideNotifyBubble,
+    hideNotifyBubble = Bubble.HideNotifyBubble,
+    ShowTextUI = TextUI.ShowTextUI,
+    showTextUI = TextUI.ShowTextUI,
+    HideTextUI = TextUI.HideTextUI,
+    hideTextUI = TextUI.HideTextUI,
+    IsTextUIOpen = TextUI.IsTextUIOpen,
+    isTextUIOpen = TextUI.IsTextUIOpen,
+    AddRadialItem = Radial.AddRadialItem, addRadialItem = Radial.AddRadialItem,
+    RemoveRadialItem = Radial.RemoveRadialItem, removeRadialItem = Radial.RemoveRadialItem,
+    ClearRadialItems = Radial.ClearRadialItems, clearRadialItems = Radial.ClearRadialItems,
+    RegisterRadial = Radial.RegisterRadial, registerRadial = Radial.RegisterRadial,
+    HideRadial = Radial.HideRadial, hideRadial = Radial.HideRadial,
+    DisableRadial = Radial.DisableRadial, disableRadial = Radial.DisableRadial,
+    GetCurrentRadialId = Radial.GetCurrentRadialId, getCurrentRadialId = Radial.GetCurrentRadialId,
+}
+
+local function clone(value)
+    if type(value) ~= "table" then return value end
+    local copy = {}
+    for key, entry in pairs(value) do copy[key] = clone(entry) end
+    return copy
+end
+
+local function getGlobalConfig()
+    return clone(Bridge.settings.get("interface", {}))
+end
+
+local uiLocale
+local function uiText(key)
+    uiLocale = uiLocale or Bridge.locale("pr_bridge")
+    return uiLocale:t("ui." .. key)
+end
+
+local function saveGlobalConfig(config)
+    local ok, saved = Bridge.callback.await("pr_bridge:ui:saveConfig", 10000, config)
+    if not ok then
+        local key = tostring(saved or "save_failed")
+        uiLocale = uiLocale or Bridge.locale("pr_bridge")
+        UI.Notify({ title = "pr_bridge", description = uiLocale:has("ui." .. key) and uiText(key) or key, type = "error" })
+        return false
+    end
+
+    UI.Notify({ title = "pr_bridge", description = uiText("saved"), type = "success" })
+    return true
+end
+
+function UI.GetVisualConfig()
+    return getGlobalConfig()
+end
+
+UI.getVisualConfig = UI.GetVisualConfig
+
+local openMenuId
+
+local function menuPosition()
+    local layout = getGlobalConfig().layout or {}
+    return layout.registerMenu == "left" and "top-left" or "top-right"
+end
+
+function UI.RegisterMenu(data, callback)
+    if MenuAdapter and type(MenuAdapter.RegisterMenu) == "function" and ActiveBridges and ActiveBridges["menus"] ~= "default" and Config.ui_interface ~= "svelte" then
+        local payload = clone(data or {})
+        payload.position = payload.position or menuPosition()
+        return MenuAdapter.RegisterMenu(payload, callback)
+    end
+
+    if type(data) ~= "table" or not data.id then return false end
+
+    local contextOptions = {}
+    local menuOpts = data.options or {}
+
+    for i = 1, #menuOpts do
+        local opt = menuOpts[i]
+        if type(opt) == "table" then
+            if type(opt.values) == "table" and #opt.values > 0 then
+                local subId = data.id .. "_sub_" .. i
+                local subOptions = {}
+                for vIdx = 1, #opt.values do
+                    local val = opt.values[vIdx]
+                    local valTitle = type(val) == "table" and (val.label or val.title) or tostring(val)
+                    local valDesc = type(val) == "table" and val.description or nil
+                    subOptions[#subOptions + 1] = {
+                        title = valTitle,
+                        description = valDesc,
+                        icon = opt.icon,
+                        onSelect = function()
+                            if callback then callback(i, vIdx, opt.args) end
+                        end
+                    }
+                end
+                Context.RegisterContext({
+                    id = subId,
+                    title = opt.label or data.title,
+                    menu = data.id,
+                    options = subOptions
+                })
+                contextOptions[#contextOptions + 1] = {
+                    title = opt.label or opt.title or "",
+                    description = opt.description,
+                    icon = opt.icon,
+                    menu = subId,
+                    arrow = true
+                }
+            else
+                contextOptions[#contextOptions + 1] = {
+                    title = opt.label or opt.title or "",
+                    description = opt.description,
+                    icon = opt.icon,
+                    onSelect = function()
+                        if callback then callback(i, 1, opt.args) end
+                    end
+                }
+            end
+        end
+    end
+
+    return Context.RegisterContext({
+        id = data.id,
+        title = data.title or "",
+        position = data.position or menuPosition(),
+        onExit = data.onClose,
+        options = contextOptions
+    })
+end
+
+UI.registerMenu = UI.RegisterMenu
+
+function UI.ShowMenu(id, startIndex)
+    if MenuAdapter and type(MenuAdapter.ShowMenu) == "function" and ActiveBridges and ActiveBridges["menus"] ~= "default" and Config.ui_interface ~= "svelte" then
+        local result = MenuAdapter.ShowMenu(id, startIndex)
+        if result ~= false then openMenuId = id end
+        return result
+    end
+
+    openMenuId = id
+    return Context.ShowContext(id)
+end
+
+UI.showMenu = UI.ShowMenu
+
+function UI.HideMenu(onExit)
+    if MenuAdapter and type(MenuAdapter.HideMenu) == "function" and ActiveBridges and ActiveBridges["menus"] ~= "default" and Config.ui_interface ~= "svelte" then
+        local result = MenuAdapter.HideMenu(onExit)
+        openMenuId = nil
+        return result
+    end
+
+    openMenuId = nil
+    return Context.HideContext(onExit)
+end
+
+function UI.GetOpenMenu()
+    if MenuAdapter and type(MenuAdapter.GetOpenContextMenu) == "function" and ActiveBridges and ActiveBridges["menus"] ~= "default" and Config.ui_interface ~= "svelte" then
+        return MenuAdapter.GetOpenContextMenu() or openMenuId
+    end
+    return Context.GetOpenContextMenu() or openMenuId
+end
+
+UI.getOpenMenu = UI.GetOpenMenu
+UI.hideMenu = UI.HideMenu
+
+local function openPaletteEditor()
+    local config = getGlobalConfig()
+    local palette = config.palette or {}
+    local values = UI.InputDialog("Paleta global", {
+        { type = "color", label = "Cor primaria", default = palette.primary or "#ff7a1a", required = true },
+        { type = "color", label = "Primaria em destaque", default = palette.primaryHover or "#ff8c2a", required = true },
+        { type = "color", label = "Sucesso", default = palette.success or "#10b981", required = true },
+        { type = "color", label = "Aviso", default = palette.warning or "#f59e0b", required = true },
+        { type = "color", label = "Erro", default = palette.error or "#ef4444", required = true },
+        { type = "color", label = "Informacao", default = palette.info or "#3b82f6", required = true },
+        { type = "color", label = "Texto principal", default = palette.text or "#ffffff", required = true },
+        { type = "color", label = "Texto secundario", default = palette.textMuted or "#8e8e9f", required = true },
+        { type = "color", label = "Superficie", default = palette.surface or "#0c0c0f", required = true },
+        { type = "number", label = "Opacidade", default = palette.surfaceOpacity or 0.82, min = 0.15, max = 1.0, step = 0.01, precision = 2, required = true },
+        { type = "color", label = "Bordas", default = palette.border or "#2d2d35", required = true },
+    }, { size = "md", allowCancel = true })
+
+    if not values then return end
+    config.palette = {
+        primary = values[1], primaryHover = values[2], success = values[3], warning = values[4],
+        error = values[5], info = values[6], text = values[7], textMuted = values[8],
+        surface = values[9], surfaceOpacity = values[10], border = values[11],
+    }
+    saveGlobalConfig(config)
+end
+
+local function layoutOptions(values)
+    local options = {}
+    for i = 1, #values do options[i] = { value = values[i], label = values[i] } end
+    return options
+end
+
+local function openLayoutEditor()
+    local config = getGlobalConfig()
+    local layout = config.layout or {}
+    local values = UI.InputDialog("Posicoes globais", {
+        { type = "select", label = "RegisterContext", default = layout.registerContext or "right", options = layoutOptions({ "left", "right" }), required = true },
+        { type = "select", label = "Metadata", default = layout.metadata or "right", options = layoutOptions({ "left", "right" }), required = true },
+        { type = "select", label = "AlertDialog", default = layout.alertDialog or "center", options = layoutOptions({ "left", "center", "right" }), required = true },
+        { type = "select", label = "InputDialog", default = layout.inputDialog or "center", options = layoutOptions({ "left", "center", "right" }), required = true },
+        { type = "select", label = "RegisterMenu", default = layout.registerMenu or "right", options = layoutOptions({ "left", "right" }), required = true },
+        { type = "select", label = "Notify", default = layout.notify or "top-right", options = layoutOptions({ "top-left", "top-center", "top-right", "center-left", "center-right", "bottom-left", "bottom-center", "bottom-right" }), required = true },
+        { type = "select", label = "ProgressBar", default = layout.progressBar or "bottom-center", options = layoutOptions({ "top-center", "bottom-center" }), required = true },
+        { type = "select", label = "SkillCheck", default = layout.skillCheck or "bottom-center", options = layoutOptions({ "top-center", "bottom-center" }), required = true },
+        { type = "select", label = "ShowTextUI", default = layout.showTextUI or "right-center", options = layoutOptions({ "left-center", "right-center", "top-center", "bottom-center" }), required = true },
+    }, { size = "md", allowCancel = true })
+
+    if not values then return end
+    config.layout = {
+        registerContext = values[1], metadata = values[2], alertDialog = values[3],
+        inputDialog = values[4], registerMenu = values[5], notify = values[6],
+        progressBar = values[7], skillCheck = values[8], showTextUI = values[9],
+    }
+    saveGlobalConfig(config)
+end
+
+local function openTargetEditor()
+    local config = getGlobalConfig()
+    local target = config.target or {}
+    local values = UI.InputDialog("Visual do target", {
+        { type = "number", label = "Posicao horizontal (%)", default = target.x or 50, min = 0, max = 100, step = 0.1, precision = 2, required = true },
+        { type = "number", label = "Posicao vertical do olho (%)", default = target.y or 50, min = 0, max = 100, step = 0.1, precision = 2, required = true },
+        { type = "number", label = "Posicao vertical das opcoes (%)", default = target.optionsY or 48.4, min = 0, max = 100, step = 0.1, precision = 2, required = true },
+        { type = "number", label = "Distancia das opcoes (px)", default = target.offsetX or 24, min = -500, max = 500, step = 1, precision = 1, required = true },
+        { type = "number", label = "Largura das opcoes (px)", default = target.width or 200, min = 80, max = 800, step = 1, precision = 1, required = true },
+        { type = "number", label = "Altura das opcoes (px)", default = target.height or 29.33, min = 18, max = 100, step = 0.1, precision = 2, required = true },
+        { type = "number", label = "Tamanho do olho (px)", default = target.eyeSize or 36, min = 12, max = 120, step = 1, precision = 1, required = true },
+        { type = "number", label = "Escala do icone central", default = target.eyeScale or 1, min = 0.25, max = 3, step = 0.05, precision = 2, required = true },
+        { type = "select", label = "Icone do target", default = target.eyeIcon or "fa-solid fa-eye", options = {
+            { value = "fa-solid fa-eye", label = "Olho" },
+            { value = "fa-solid fa-crosshairs", label = "Mira" },
+            { value = "fa-solid fa-bullseye", label = "Alvo" },
+            { value = "fa-solid fa-location-crosshairs", label = "Localizacao" },
+            { value = "fa-solid fa-hand-pointer", label = "Ponteiro" },
+            { value = "fa-solid fa-circle-dot", label = "Ponto central" },
+        }, required = true },
+        { type = "number", label = "Escala geral", default = target.scale or 1, min = 0.25, max = 3, step = 0.05, precision = 2, required = true },
+        { type = "number", label = "Tamanho da fonte (px)", default = target.fontSize or 14.67, min = 8, max = 40, step = 0.1, precision = 2, required = true },
+        { type = "color", label = "Cor normal", default = target.color or "#cfd2da", required = true },
+        { type = "color", label = "Cor em destaque", default = target.hoverColor or "#ffffff", required = true },
+        { type = "color", label = "Cor do olho inativo", default = target.eyeColor or "#000000", required = true },
+        { type = "color", label = "Fundo das opcoes", default = target.background or "#141414", required = true },
+        { type = "color", label = "Fundo em destaque", default = target.hoverBackground or "#1e1e1e", required = true },
+        { type = "number", label = "Opacidade do fundo", default = target.backgroundOpacity or 0.70, min = 0, max = 1, step = 0.01, precision = 2, required = true },
+        { type = "number", label = "Desvanecimento do fundo", default = target.backgroundFade or 0.60, min = 0, max = 1, step = 0.01, precision = 2, required = true },
+        { type = "color", label = "Cor dos marcadores", default = target.markerColor or "#9b9b9b", required = true },
+        { type = "color", label = "Marcador em destaque", default = target.markerHoverColor or "#6287ec", required = true },
+        { type = "number", label = "Opacidade dos marcadores", default = target.markerOpacity or 0.69, min = 0, max = 1, step = 0.01, precision = 2, required = true },
+        { type = "select", label = "Icone do ponto proximo", default = target.markerIcon or "bi bi-circle", options = {
+            { value = "bi bi-circle", label = "Circulo" }, { value = "bi bi-record-circle", label = "Circulo marcado" },
+            { value = "bi bi-crosshair", label = "Mira" }, { value = "bi bi-bullseye", label = "Alvo" },
+            { value = "bi bi-geo-alt-fill", label = "Localizacao" }, { value = "bi bi-cursor-fill", label = "Ponteiro" },
+            { value = "bi bi-diamond", label = "Diamante" },
+        }, required = true },
+        { type = "checkbox", label = "Trocar icone quando o alvo for reconhecido", checked = target.markerChangeOnTarget ~= false },
+        { type = "select", label = "Icone do alvo reconhecido", default = target.markerTargetIcon or "bi bi-record-circle", options = {
+            { value = "bi bi-record-circle", label = "Circulo marcado" }, { value = "bi bi-circle", label = "Circulo" },
+            { value = "bi bi-crosshair", label = "Mira" }, { value = "bi bi-bullseye", label = "Alvo" },
+            { value = "bi bi-geo-alt-fill", label = "Localizacao" }, { value = "bi bi-cursor-fill", label = "Ponteiro" },
+            { value = "bi bi-diamond", label = "Diamante" },
+        }, required = true },
+        { type = "number", label = "Distancia para exibir o ponto (m)", default = target.markerDistance or 5, min = 1, max = 25, step = 0.5, precision = 1, required = true },
+        { type = "number", label = "Tamanho do icone do ponto (px)", default = target.markerSize or 30, min = 12, max = 96, step = 1, precision = 1, required = true },
+        { type = "number", label = "Escala do icone proximo", default = target.markerScale or 1, min = 0.25, max = 3, step = 0.05, precision = 2, required = true },
+        { type = "number", label = "Escala do icone reconhecido", default = target.markerTargetScale or 1, min = 0.25, max = 3, step = 0.05, precision = 2, required = true },
+        { type = "select", label = "Efeito do alvo reconhecido", default = target.markerEffect or "pulse-glow", options = {
+            { value = "none", label = "Sem efeito" }, { value = "pulse", label = "Pulsar opacidade" },
+            { value = "pulse-glow", label = "Pulsar brilho" }, { value = "spin", label = "Girar" },
+            { value = "breathe", label = "Aumentar e diminuir" },
+        }, required = true },
+        { type = "number", label = "Duracao de cada ciclo do efeito (s)", default = target.markerEffectSpeed or 1.2, min = 0.25, max = 5, step = 0.05, precision = 2, required = true },
+        { type = "number", label = "Intensidade do aumento", default = target.markerEffectStrength or 1.25, min = 1, max = 2, step = 0.05, precision = 2, required = true },
+        { type = "checkbox", label = "Ocultar alvos atras de paredes e objetos", checked = target.wallDetection ~= false },
+        { type = "number", label = "Flags da deteccao de paredes", description = "Padrao: 277 (1 + 4 + 16 + 256).", default = target.wallRayFlags or 277, min = 1, max = 511, step = 1, precision = 0, required = true },
+    }, { size = "lg", allowCancel = true })
+
+    if not values then return end
+    config.target = {
+        x = values[1], y = values[2], optionsY = values[3], offsetX = values[4],
+        width = values[5], height = values[6], eyeSize = values[7], eyeScale = values[8],
+        eyeIcon = values[9], scale = values[10], fontSize = values[11],
+        color = values[12], hoverColor = values[13], eyeColor = values[14],
+        background = values[15], hoverBackground = values[16],
+        backgroundOpacity = values[17], backgroundFade = values[18], markerColor = values[19],
+        markerHoverColor = values[20], markerOpacity = values[21],
+        markerIcon = values[22], markerChangeOnTarget = values[23] == true,
+        markerTargetIcon = values[24], markerDistance = values[25], markerSize = values[26],
+        markerScale = values[27], markerTargetScale = values[28],
+        markerEffect = values[29], markerEffectSpeed = values[30], markerEffectStrength = values[31],
+        wallDetection = values[32] == true, wallRayFlags = values[33],
+    }
+    saveGlobalConfig(config)
+end
+
+local function openInteractEditor()
+    local config = getGlobalConfig()
+    local interact = config.interact or {}
+    local rows = {
+        { type = "select", label = "Modelo visual", default = interact.style or "obtaizen_ui", options = {
+            { value = "blue_circle", label = "Pino" },
+            { value = "green_square", label = "Quadrado" },
+            { value = "glitch", label = "Glitch" },
+            { value = "circle", label = "Círculo" },
+            { value = "record-circle", label = "Círculo marcado" },
+            { value = "crosshair", label = "Mira" },
+            { value = "bullseye", label = "Alvo" },
+            { value = "geo-alt-fill", label = "Localização" },
+            { value = "cursor-fill", label = "Ponteiro" },
+            { value = "diamond", label = "Diamante" },
+            { value = "obtaizen_ui", label = "Obteizen" },
+        }, required = true },
+        { type = "number", label = "Escala geral", default = interact.scale or 1, min = 0.25, max = 3, step = 0.05, precision = 2, required = true },
+        { type = "number", label = "Tamanho do ponto proximo (px)", default = interact.pinSize or 32, min = 10, max = 120, step = 1, precision = 1, required = true },
+        { type = "number", label = "Tamanho da tecla de interacao (px)", default = interact.keySize or 38, min = 10, max = 120, step = 1, precision = 1, required = true },
+        { type = "number", label = "Tamanho do seletor (px)", default = interact.bulletSize or 17, min = 8, max = 60, step = 1, precision = 1, required = true },
+        { type = "number", label = "Largura das opcoes (px)", default = interact.optionWidth or 180, min = 80, max = 600, step = 1, precision = 1, required = true },
+        { type = "number", label = "Altura das opcoes (px)", default = interact.optionHeight or 30, min = 18, max = 80, step = 1, precision = 1, required = true },
+        { type = "number", label = "Espaco entre opcoes (px)", default = interact.optionGap or 3, min = 0, max = 30, step = 1, precision = 1, required = true },
+        { type = "number", label = "Tamanho do texto (px)", default = interact.fontSize or 14, min = 8, max = 36, step = 1, precision = 1, required = true },
+        { type = "color", label = "Cor do ponto proximo", default = interact.pinColor or "#7656ff", required = true },
+        { type = "color", label = "Cor da tecla de interacao", default = interact.keyColor or "#7656ff", required = true },
+        { type = "color", label = "Cor da opcao selecionada", default = interact.selectedColor or "#7656ff", required = true },
+        { type = "color", label = "Cor das opcoes nao selecionadas", default = interact.unselectedColor or "#777777", required = true },
+        { type = "color", label = "Cor do texto", default = interact.textColor or "#ffffff", required = true },
+        { type = "number", label = "Opacidade dos paineis", default = interact.backgroundOpacity or 0.92, min = 0, max = 1, step = 0.01, precision = 2, required = true },
+        { type = "checkbox", label = "Ocultar interacoes atras de paredes", checked = interact.wallDetection ~= false },
+        { type = "number", label = "Flags da deteccao de paredes", default = interact.wallRayFlags or 277, min = 1, max = 511, step = 1, precision = 0, required = true },
+        { type = "checkbox", label = "Desativar quando estiver morto", checked = interact.disableOnDeath ~= false },
+        { type = "checkbox", label = "Desativar quando outra NUI estiver focada", checked = interact.disableOnNuiFocus ~= false },
+        { type = "checkbox", label = "Desativar dentro de veiculos", checked = interact.disableInVehicle ~= false },
+        { type = "checkbox", label = "Desativar quando estiver algemado", checked = interact.disableWhenCuffed ~= false },
+        { type = "checkbox", label = "Exibir indicadores do interact na tela", checked = interact.showUI ~= false },
+        { type = "color", label = "Cor secundária (camada inferior)", default = interact.secondaryColor or "#00ffff", required = true },
+        { type = "slider", label = "Opacidade: Ponto proximo (%)", default = math.floor((interact.pinOpacity or 1) * 100 + 0.5), min = 0, max = 100, step = 1, required = true },
+        { type = "slider", label = "Opacidade: Tecla de interacao (%)", default = math.floor((interact.keyOpacity or 1) * 100 + 0.5), min = 0, max = 100, step = 1, required = true },
+        { type = "slider", label = "Opacidade: Opcao selecionada (%)", default = math.floor((interact.selectedOpacity or 1) * 100 + 0.5), min = 0, max = 100, step = 1, required = true },
+        { type = "slider", label = "Opacidade: Opcoes nao selecionadas (%)", default = math.floor((interact.unselectedOpacity or 1) * 100 + 0.5), min = 0, max = 100, step = 1, required = true },
+        { type = "slider", label = "Opacidade: Texto (%)", default = math.floor((interact.textOpacity or 1) * 100 + 0.5), min = 0, max = 100, step = 1, required = true },
+        { type = "slider", label = "Opacidade: Camada secundaria (%)", default = math.floor((interact.secondaryOpacity or 1) * 100 + 0.5), min = 0, max = 100, step = 1, required = true },
+    }
+    rows[#rows+1]={type="color",label="Cor secundaria",default=interact.keySecondaryColor or interact.secondaryColor or "#00ffff",required=true}
+    rows[#rows+1]={type="slider",label="Opacidade secundaria (%)",default=math.floor((interact.keySecondaryOpacity or interact.secondaryOpacity or 1)*100+0.5),min=0,max=100,step=1,required=true}
+    rows[#rows+1]={type="color",label="Cor secundaria",default=interact.selectedSecondaryColor or interact.secondaryColor or "#00ffff",required=true}
+    rows[#rows+1]={type="slider",label="Opacidade secundaria (%)",default=math.floor((interact.selectedSecondaryOpacity or interact.secondaryOpacity or 1)*100+0.5),min=0,max=100,step=1,required=true}
+    rows[#rows+1]={type="color",label="Cor secundaria",default=interact.unselectedSecondaryColor or interact.secondaryColor or "#00ffff",required=true}
+    rows[#rows+1]={type="slider",label="Opacidade secundaria (%)",default=math.floor((interact.unselectedSecondaryOpacity or interact.secondaryOpacity or 1)*100+0.5),min=0,max=100,step=1,required=true}
+    local groups = {
+        {title="Modelo e escala", ids={1,2}},
+        {title="Ponto de interesse - cor primaria", ids={3,10,24,23,29}},
+        {title="Botao de interacao - cor primaria", ids={4,11,25,30,31}},
+        {title="Opcao selecionada", ids={12,26,32,33}},
+        {title="Opcoes nao selecionadas", ids={13,27,34,35}},
+        {title="Texto", ids={14,28,9}},
+        {title="Tamanho e fundo das opcoes", ids={5,6,7,8,15}},
+        {title="Visibilidade e comportamento", ids={22,16,17,18,19,20,21}},
+    }
+    local ordered, indices = {}, {}
+    for _, group in ipairs(groups) do
+        for i,index in ipairs(group.ids) do
+            local row=rows[index]
+            if i==1 then row.section=group.title end
+            ordered[#ordered+1],indices[#indices+1]=row,index
+        end
+    end
+    local submitted=UI.InputDialog("Visual do interact",ordered,{size="lg",allowCancel=true})
+    if not submitted then return end
+    local values={}
+    for i,index in ipairs(indices) do values[index]=submitted[i] end
+
+    if not values then return end
+    config.interact = {
+        style = values[1], scale = values[2], pinSize = values[3], keySize = values[4], bulletSize = values[5],
+        optionWidth = values[6], optionHeight = values[7], optionGap = values[8], fontSize = values[9],
+        pinColor = values[10], keyColor = values[11], selectedColor = values[12], unselectedColor = values[13],
+        textColor = values[14], backgroundOpacity = values[15], wallDetection = values[16] == true, wallRayFlags = values[17],
+        disableOnDeath = values[18] == true, disableOnNuiFocus = values[19] == true,
+        disableInVehicle = values[20] == true, disableWhenCuffed = values[21] == true,
+        showUI = values[22] == true, secondaryColor = values[23],
+        keySecondaryColor=values[30],keySecondaryOpacity=values[31]/100,
+        selectedSecondaryColor=values[32],selectedSecondaryOpacity=values[33]/100,
+        unselectedSecondaryColor=values[34],unselectedSecondaryOpacity=values[35]/100,
+        pinOpacity = (tonumber(values[24]) or 100) / 100,
+        keyOpacity = (tonumber(values[25]) or 100) / 100,
+        selectedOpacity = (tonumber(values[26]) or 100) / 100,
+        unselectedOpacity = (tonumber(values[27]) or 100) / 100,
+        textOpacity = (tonumber(values[28]) or 100) / 100,
+        secondaryOpacity = (tonumber(values[29]) or 100) / 100,
+    }
+    saveGlobalConfig(config)
+end
+
+local function openBubbleEditor()
+    local config = getGlobalConfig()
+    local bubble = config.bubble or {}
+    local values = UI.InputDialog("Visual do notify em balao", {
+        { type = "color", label = "Cor do fundo", default = bubble.background or "#ffffff", required = true },
+        { type = "number", label = "Opacidade do fundo", default = bubble.backgroundOpacity or 0.96, min = 0, max = 1, step = 0.01, precision = 2, required = true },
+        { type = "color", label = "Cor da borda", default = bubble.border or "#222222", required = true },
+        { type = "number", label = "Opacidade da borda", default = bubble.borderOpacity or 0.92, min = 0, max = 1, step = 0.01, precision = 2, required = true },
+        { type = "color", label = "Cor do texto", default = bubble.text or "#161616", required = true },
+        { type = "number", label = "Largura minima (px)", default = bubble.minWidth or 100, min = 80, max = 400, step = 1, precision = 0, required = true },
+        { type = "number", label = "Largura maxima (px)", default = bubble.maxWidth or 300, min = 140, max = 800, step = 1, precision = 0, required = true },
+        { type = "number", label = "Espessura da borda (px)", default = bubble.borderWidth or 2, min = 0, max = 8, step = 0.5, precision = 1, required = true },
+        { type = "number", label = "Arredondamento (px)", default = bubble.radius or 18, min = 0, max = 60, step = 1, precision = 0, required = true },
+        { type = "number", label = "Tamanho da ponta (px)", default = bubble.tailSize or 16, min = 8, max = 40, step = 1, precision = 0, required = true },
+        { type = "number", label = "Tamanho do texto (px)", default = bubble.fontSize or 11, min = 8, max = 28, step = 1, precision = 0, required = true },
+        { type = "number", label = "Tamanho do titulo (px)", default = bubble.titleSize or 12, min = 8, max = 32, step = 1, precision = 0, required = true },
+    }, { size = "lg", allowCancel = true })
+
+    if not values then return end
+    config.bubble = {
+        background = values[1], backgroundOpacity = values[2], border = values[3], borderOpacity = values[4],
+        text = values[5], minWidth = values[6], maxWidth = values[7], borderWidth = values[8],
+        radius = values[9], tailSize = values[10], fontSize = values[11], titleSize = values[12],
+    }
+    saveGlobalConfig(config)
+end
+
+local function openLogoEditor()
+    local config = getGlobalConfig()
+    local values = UI.InputDialog(uiText("logo_title"), {
+        { type = "input", label = uiText("logo_url"), description = uiText("logo_help"),
+            default = (config.branding or {}).logoUrl or "", maxLength = 2048, required = false },
+    }, { allowCancel = true })
+    if not values then return end
+    config.branding = { logoUrl = values[1] or "" }
+    saveGlobalConfig(config)
+end
+
+function UI.OpenVisualAdminMenu(parentMenu)
+    CreateThread(function()
+        local allowed, reason = Bridge.callback.await("pr_bridge:ui:isAdmin", 10000)
+        if allowed == nil then
+            print(("[pr_bridge:ui] Falha ao consultar acesso: %s"):format(tostring(reason or "sem resposta")))
+            UI.Notify({ title = "pr_bridge", description = "Nao foi possivel consultar o acesso. Tente novamente.", type = "error" })
+            return
+        end
+        if allowed ~= true then
+            UI.Notify({ title = "pr_bridge", description = "Acesso negado.", type = "error" })
+            return
+        end
+        if not Bridge.settings.get("interface") then
+            UI.Notify({ title = "pr_bridge", description = uiText("not_ready"), type = "error" })
+            return
+        end
+
+        local id = ("pr_bridge_visual_admin_%s"):format(resourceName)
+        UI.RegisterContext({
+            id = id,
+            title = "Interface global",
+            menu = parentMenu,
+            options = {
+                { title = uiText("logo_title"), description = uiText("logo_description"), icon = "image", onSelect = openLogoEditor },
+                { title = "Paleta de cores", description = "Cores e opacidade usadas por todos os componentes.", icon = "palette-fill", onSelect = openPaletteEditor },
+                { title = "Posicoes", description = "Lado dos menus, metadata, notificacoes e indicadores.", icon = "layout-sidebar-inset", onSelect = openLayoutEditor },
+                { title = "Target", description = "Posicao, escala, cores, opacidade e marcadores do sistema de interacao.", icon = "crosshair", onSelect = openTargetEditor },
+                { title = "Interact", description = "Modelo visual, cores, tamanhos, bloqueios e deteccao de paredes.", icon = "cursor", onSelect = openInteractEditor },
+                { title = "Notify em balao", description = "Fundo, borda, opacidade, largura, ponta e tipografia do balao.", icon = "chat-square-text", onSelect = openBubbleEditor },
+                {
+                    title = "Restaurar padrao",
+                    description = "Restaura a paleta e todas as posicoes originais.",
+                    icon = "arrow-counterclockwise",
+                    onSelect = function()
+                        CreateThread(function()
+                            local ok, result = Bridge.callback.await("pr_bridge:ui:resetConfig", 10000)
+                            UI.Notify({
+                                title = "pr_bridge",
+                                description = ok and "Configuracao restaurada." or tostring(result or "reset_failed"),
+                                type = ok and "success" or "error",
+                            })
+                        end)
+                    end,
+                },
+            },
+        })
+        UI.ShowContext(id)
+    end)
+end
+
+UI.openVisualAdminMenu = UI.OpenVisualAdminMenu
+
+AddEventHandler("pr_bridge:ui:context:select", function(owner, id, index)
+    if owner ~= resourceName then return end
+    Context.HandleSelect(id, index)
+end)
+
+AddEventHandler("pr_bridge:ui:context:close", function(owner)
+    if owner ~= resourceName then return end
+    Context.HandleClose()
+end)
+
+AddEventHandler("pr_bridge:ui:context:back", function(owner)
+    if owner ~= resourceName then return end
+    Context.HandleBack()
+end)
+
+-- Context registries live in each consumer resource. This event lets a child
+-- context return to a parent registered by another resource without sharing
+-- callbacks or mutable registry tables between resources.
+AddEventHandler("pr_bridge:ui:context:openExternal", function(owner, id)
+    if owner ~= resourceName or type(id) ~= "string" or id == "" then return end
+    Context.ShowContext(id)
+end)
+
+AddEventHandler("pr_bridge:ui:alert:result", function(owner, result)
+    if owner ~= resourceName then return end
+    Alert.HandleResult(result)
+end)
+
+AddEventHandler("pr_bridge:ui:alert:close", function(owner)
+    if owner ~= resourceName then return end
+    Alert.HandleClose()
+end)
+
+AddEventHandler("pr_bridge:ui:input:submit", function(owner, values)
+    if owner ~= resourceName then return end
+    Input.HandleSubmit(values)
+end)
+
+AddEventHandler("pr_bridge:ui:input:close", function(owner)
+    if owner ~= resourceName then return end
+    Input.HandleClose()
+end)
+
+if resourceName == BRIDGE then
+    RegisterNetEvent("pr_bridge:ui:openAdmin", function()
+        UI.OpenVisualAdminMenu()
+    end)
+
+    Bridge.addCommand("pr_context_test", {
+        help = "Abre o menu de teste da interface nativa do pr_bridge",
+    }, function()
+        Bridge.debug.info("[pr_interface] Comando /pr_context_test executado via Bridge.addCommand.")
+
+        UI.RegisterContext({
+            {
+                id = "pr_context_test_main",
+                title = "pr_bridge Interface",
+                options = {
+                    {
+                        title = "Interface global",
+                        description = "Paleta, opacidade e posicoes dos componentes.",
+                        icon = "palette-fill",
+                        onSelect = function()
+                            UI.OpenVisualAdminMenu("pr_context_test_main")
+                        end,
+                    },
+                    {
+                        title = "NotificaÃ§Ã£o",
+                        description = "Dispara Notify nativo",
+                        icon = "bell",
+                        onSelect = function()
+                            UI.Notify({
+                                title = "pr_bridge",
+                                description = "Notify da interface nativa",
+                                type = "success",
+                            })
+                        end,
+                    },
+                    {
+                        title = "Alert Dialog",
+                        description = "Abre um alerta",
+                        icon = "circle-info",
+                        onSelect = function()
+                            CreateThread(function()
+                                local result = UI.AlertDialog({
+                                    header = "Confirmar",
+                                    content = "Interface nativa funcionando?",
+                                    centered = true,
+                                    cancel = true,
+                                })
+                                UI.Notify({
+                                    title = "Alert",
+                                    description = "Resultado: " .. tostring(result),
+                                    type = "info",
+                                })
+                            end)
+                        end,
+                    },
+                    {
+                        title = "Input Dialog",
+                        description = "Abre um formulÃ¡rio",
+                        icon = "keyboard",
+                        onSelect = function()
+                            CreateThread(function()
+                                local values = UI.InputDialog("Todos os tipos de campo", {
+                                    {
+                                        type = "input",
+                                        label = "Texto",
+                                        description = "Input simples com limite de caracteres.",
+                                        placeholder = "Digite um texto...",
+                                        icon = "type",
+                                        required = true,
+                                        minLength = 3,
+                                        maxLength = 40,
+                                    },
+                                    {
+                                        type = "input",
+                                        label = "Senha",
+                                        placeholder = "Digite uma senha...",
+                                        password = true,
+                                        icon = "key-fill",
+                                    },
+                                    {
+                                        type = "number",
+                                        label = "Numero decimal",
+                                        description = "Aceita valores fracionados como 0.8 e 0.9.",
+                                        default = 0.9,
+                                        min = 0.0,
+                                        max = 10.0,
+                                        precision = 2,
+                                        step = 0.1,
+                                    },
+                                    {
+                                        type = "checkbox",
+                                        label = "Checkbox",
+                                        checked = true,
+                                    },
+                                    {
+                                        type = "select",
+                                        label = "Dropdown",
+                                        description = "Selecao simples com opcao de limpar.",
+                                        placeholder = "Selecione uma opcao",
+                                        default = "option_2",
+                                        clearable = true,
+                                        searchable = true,
+                                        options = {
+                                            { value = "option_1", label = "Opcao 1" },
+                                            { value = "option_2", label = "Opcao 2" },
+                                            { value = "option_3", label = "Opcao 3" },
+                                        },
+                                    },
+                                    {
+                                        type = "multi-select",
+                                        label = "Selecao multipla",
+                                        description = "Permite selecionar no maximo duas opcoes.",
+                                        default = { "alpha" },
+                                        maxSelectedValues = 2,
+                                        options = {
+                                            { value = "alpha", label = "Alpha" },
+                                            { value = "bravo", label = "Bravo" },
+                                            { value = "charlie", label = "Charlie" },
+                                        },
+                                    },
+                                    {
+                                        type = "slider",
+                                        label = "Slider",
+                                        default = 35,
+                                        min = 0,
+                                        max = 100,
+                                        step = 5,
+                                    },
+                                    {
+                                        type = "color",
+                                        label = "Seletor de cor",
+                                        description = "Cor no formato hexadecimal.",
+                                        default = "#ff7a1a",
+                                        format = "hex",
+                                    },
+                                    {
+                                        type = "date",
+                                        label = "Data",
+                                        default = true,
+                                        format = "DD/MM/YYYY",
+                                        returnString = true,
+                                        clearable = true,
+                                    },
+                                    {
+                                        type = "date-range",
+                                        label = "Intervalo de datas",
+                                        default = { "2026-07-19", "2026-07-26" },
+                                        format = "DD/MM/YYYY",
+                                        returnString = true,
+                                    },
+                                    {
+                                        type = "time",
+                                        label = "Horario",
+                                        default = "14:30",
+                                        format = "24",
+                                        clearable = true,
+                                    },
+                                    {
+                                        type = "textarea",
+                                        label = "Texto longo",
+                                        description = "Textarea com limite e redimensionamento.",
+                                        placeholder = "Escreva uma observacao...",
+                                        autosize = true,
+                                        minLength = 5,
+                                        maxLength = 240,
+                                    },
+                                    {
+                                        type = "input",
+                                        label = "Campo desativado",
+                                        default = "Somente leitura visual",
+                                        disabled = true,
+                                    },
+                                }, {
+                                    allowCancel = true,
+                                    size = "md",
+                                })
+                                UI.Notify({
+                                    title = "Input",
+                                    description = values and ("Campos retornados: " .. tostring(#values)) or "Cancelado",
+                                    type = values and "success" or "error",
+                                })
+                            end)
+                        end,
+                    },
+                    {
+                        title = "Submenu",
+                        description = "Stack de contexts",
+                        icon = "folder",
+                        menu = "pr_context_test_sub",
+                    },
+                    {
+                        title = "TextUI",
+                        description = "Mostra TextUI por 3s",
+                        icon = "hand",
+                        onSelect = function()
+                            UI.ShowTextUI("[E] Interagir", { position = "right-center", icon = "hand" })
+                            SetTimeout(3000, function()
+                                UI.HideTextUI()
+                            end)
+                        end,
+                    },
+                },
+            },
+            {
+                id = "pr_context_test_sub",
+                title = "Submenu",
+                menu = "pr_context_test_main",
+                options = {
+                    {
+                        title = "Item do submenu",
+                        description = "Fecha ao selecionar",
+                        icon = "check",
+                        onSelect = function()
+                            UI.Notify({ title = "Submenu", description = "Item selecionado", type = "info" })
+                        end,
+                    },
+                },
+            },
+        })
+        UI.ShowContext("pr_context_test_main")
+    end)
+end
+
+return UI

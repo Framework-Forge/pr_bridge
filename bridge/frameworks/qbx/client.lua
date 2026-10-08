@@ -24,6 +24,36 @@ RegisterNetEvent('QBCore:Player:SetPlayerData', function(value)
     end
 end)
 
+AddEventHandler('qbx_core:client:statusChanged', function(status)
+    if type(status) ~= 'table' then return end
+    QBX.PlayerData = QBX.PlayerData or {}
+    QBX.PlayerData.metadata = QBX.PlayerData.metadata or {}
+    for _, key in ipairs({ 'health', 'armor', 'hunger', 'thirst', 'stress', 'oxygen' }) do
+        if status[key] ~= nil then QBX.PlayerData.metadata[key] = status[key] end
+    end
+end)
+
+RegisterNetEvent('QBCore:Client:OnJobUpdate', function(job)
+    QBX.PlayerData = QBX.PlayerData or {}
+    QBX.PlayerData.job = job
+end)
+
+RegisterNetEvent('QBCore:Client:OnGangUpdate', function(gang)
+    QBX.PlayerData = QBX.PlayerData or {}
+    QBX.PlayerData.gang = gang
+end)
+
+RegisterNetEvent('QBCore:Client:SetDuty', function(onDuty)
+    QBX.PlayerData = QBX.PlayerData or {}
+    QBX.PlayerData.job = QBX.PlayerData.job or {}
+    QBX.PlayerData.job.onduty = onDuty == true
+end)
+
+RegisterNetEvent('qbx_core:client:setGroups', function(groups)
+    QBX.PlayerData = QBX.PlayerData or {}
+    QBX.PlayerData.groups = groups or {}
+end)
+
 RegisterNetEvent('hud:client:OnMoneyChange', function(type, amount, isMinus)
     if not QBX.PlayerData or not QBX.PlayerData.money then return end
 
@@ -47,6 +77,10 @@ function framework.GetPlayer()
         dob = player.birthdate,
         gender = player.gender
     }
+end
+
+function framework.GetPlayerData()
+    return QBX.PlayerData or {}
 end
 
 ---Get any money/accounts
@@ -88,9 +122,31 @@ function framework.GetJobInfo()
     }
 end
 
+function framework.GetPlayerJob()
+    return QBX.PlayerData and QBX.PlayerData.job or nil
+end
+
+function framework.PlayerHasJob(jobName, grade)
+    local job = QBX.PlayerData and QBX.PlayerData.job
+    if not job or job.name ~= tostring(jobName or ''):lower() then return false end
+
+    if grade == nil then return true end
+
+    local jobGrade = job.grade
+    local level = type(jobGrade) == 'table' and (jobGrade.level or jobGrade.grade) or jobGrade
+    return (tonumber(level) or 0) >= (tonumber(grade) or 0)
+end
+
 ---@return boolean
 function framework.IsPlayerLoaded()
-    return QBX.PlayerData ~= nil
+    -- Preserve the existing authenticated-character contract: the spawn UI
+    -- and appearance may run before the world-ready notification.
+    return type(QBX.PlayerData) == "table"
+        and next(QBX.PlayerData) ~= nil
+end
+
+function framework.IsSessionReady()
+    return qbx_core:IsPlayerLoaded() == true
 end
 
 -- Documentation implementation

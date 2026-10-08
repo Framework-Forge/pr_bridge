@@ -93,14 +93,34 @@ function inventory.RegisterUsableItem(item, cb, options)
         }
     }
 
+    local framework = Bridge and Bridge.framework
+    local frameworkFallback = not options.disableFrameworkFallback
+        and type(framework) == "table"
+        and type(framework.RegisterUsableItem) == "function"
+        and framework.RegisterUsableItem ~= inventory.RegisterUsableItem
+
     debugUsable(options, "INFO", ("register item=%s framework=%s inventoryHook=%s frameworkFallback=%s"):format(
         item,
         tostring(ActiveBridges and ActiveBridges["frameworks"]),
         tostring(not options.disableInventoryHook),
-        "false"
+        tostring(frameworkFallback)
     ))
 
     local registered = false
+
+    -- Items without an ox_inventory `consume` value are delegated to the
+    -- framework's usable-item registry before ox_inventory emits usingItem.
+    -- Registering this fallback is therefore required for dynamic Forge items.
+    if frameworkFallback then
+        local ok, result = pcall(framework.RegisterUsableItem, item, function(source, itemData)
+            return dispatchUse(source, itemData)
+        end)
+        local fallbackRegistered = ok and result ~= false
+        registered = registered or fallbackRegistered
+        debugUsable(options, fallbackRegistered and "SUCCESS" or "WARNING", (
+            "framework fallback item=%s ok=%s result=%s"
+        ):format(item, tostring(ok), tostring(result)))
+    end
 
     if not options.disableInventoryHook then
         local ok = pcall(function()
@@ -242,6 +262,30 @@ end
 
 function inventory.RegisterStash(id, label, slots, maxWeight, owner, groups, coords)
     ox_inventory:RegisterStash(id, label, slots, maxWeight, owner, groups, coords)
+end
+
+function inventory.RegisterShop(shopTitle, invData, shopCoords, shopGroups)
+    invData = invData or {}
+    local groups = shopGroups or invData.groups
+    if type(groups) == "table" and not next(groups) then groups = nil end
+
+    local shopData = {
+        name = invData.name or shopTitle,
+        inventory = invData.inventory or invData.items or {},
+        slots = invData.slots,
+    }
+
+    if shopCoords then shopData.locations = shopCoords end
+    if groups then shopData.groups = groups end
+
+    ox_inventory:RegisterShop(shopTitle, shopData)
+
+    return true
+end
+
+function inventory.RegisterHook(event, callback, options)
+    if type(event) ~= "string" or type(callback) ~= "function" then return nil end
+    return ox_inventory:registerHook(event, callback, options)
 end
 
 function inventory.CreateTemporaryStash(properties)

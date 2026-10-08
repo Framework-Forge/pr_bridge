@@ -21,16 +21,13 @@ local function normalizePath(path)
 end
 
 local function getModuleInfo(path)
-    local resource = path:match("^@(.-)/.+")
-
-    if resource then
-        return resource, path:sub(#resource + 3)
-    end
+    local resource, modulePath = path:match("^@([^%./\\]+)[%./\\](.+)$")
+    if resource then return resource, modulePath end
 
     return resourceName, path
 end
 
-local function getDataFileInfo(path, extension)
+local function getDataFileCandidates(path, extension)
     if type(path) ~= "string" or path == "" then
         error(("file path must be a non-empty string (received '%s')"):format(type(path)), 3)
     end
@@ -42,11 +39,51 @@ local function getDataFileInfo(path, extension)
         error(("invalid resource file path '%s'"):format(path), 3)
     end
 
-    if extension and fileName:sub(-#extension):lower() ~= extension then
-        fileName = fileName .. extension
+    if not extension then return resource, { fileName } end
+
+    local hasExtension = fileName:sub(-#extension):lower() == extension
+    local withoutExtension = hasExtension and fileName:sub(1, -#extension - 1) or fileName
+    local candidates = {}
+
+    local function addCandidate(candidate)
+        if candidate:sub(-#extension):lower() ~= extension then
+            candidate = candidate .. extension
+        end
+
+        for index = 1, #candidates do
+            if candidates[index] == candidate then return end
+        end
+
+        candidates[#candidates + 1] = candidate
     end
 
-    return resource, fileName
+    if fileName:find("/", 1, true) then
+        addCandidate(fileName)
+    elseif hasExtension then
+        -- Explicit JSON paths stay literal first for legacy filenames.
+        addCandidate(fileName)
+        addCandidate(withoutExtension:gsub("%.", "/"))
+    else
+        -- ox_lib dotted notation remains the primary resolution.
+        addCandidate(withoutExtension:gsub("%.", "/"))
+        addCandidate(withoutExtension)
+    end
+
+    return resource, candidates
+end
+
+local function getDataFileInfo(path, extension, preferExisting)
+    local resource, candidates = getDataFileCandidates(path, extension)
+
+    if preferExisting then
+        for index = 1, #candidates do
+            if LoadResourceFile(resource, candidates[index]) ~= nil then
+                return resource, candidates[index]
+            end
+        end
+    end
+
+    return resource, candidates[1], candidates
 end
 
 function PRCore.loadFile(resource, fileName, env, optional)
@@ -85,8 +122,16 @@ function PRCore.loadJson(path, optional)
         error(("json path must be a string (received '%s')"):format(type(path)), 2)
     end
 
-    local resource, fileName = getDataFileInfo(path, ".json")
-    local content = LoadResourceFile(resource, fileName)
+    local resource, fileName, candidates = getDataFileInfo(path, ".json")
+    local content
+
+    for index = 1, #candidates do
+        content = LoadResourceFile(resource, candidates[index])
+        if content ~= nil then
+            fileName = candidates[index]
+            break
+        end
+    end
 
     if not content then
         if optional then return nil end
@@ -99,21 +144,26 @@ end
 PRCore.readJson = PRCore.loadJson
 
 function PRCore.jsonExists(path)
-    local resource, fileName = getDataFileInfo(path, ".json")
-    return LoadResourceFile(resource, fileName) ~= nil
+    local resource, _, candidates = getDataFileInfo(path, ".json")
+
+    for index = 1, #candidates do
+        if LoadResourceFile(resource, candidates[index]) ~= nil then return true end
+    end
+
+    return false
 end
 
 function PRCore.saveJson(path, value, options)
     options = options or {}
     if type(SaveResourceFile) ~= "function" then return false, "write_unavailable" end
 
-    local resource, fileName = getDataFileInfo(path, ".json")
-    local encoded = json.encode(value)
+    local resource, fileName = getDataFileInfo(path, ".json", true)
+    local ok, encoded = pcall(json.encode, value)
 
-    if not encoded then return false, "encode_failed" end
+    if not ok or type(encoded) ~= 'string' then return false, "encode_failed" end
 
-    local saved = SaveResourceFile(resource, fileName, encoded, #encoded)
-    if saved == false then return false, "save_failed" end
+    local success, saved = pcall(SaveResourceFile, resource, fileName, encoded, #encoded)
+    if not success or (saved ~= true and saved ~= 1) then return false, "save_failed" end
 
     return true, {
         resource = resource,
@@ -150,14 +200,18 @@ end
 
 PRCore.mergeJson = PRCore.updateJson
 
+if PRCore.context == 'server' then
+    PRCore.loadFile('pr_bridge', 'bridge/persistence.lua')()(PRCore, getDataFileInfo)
+end
+
 function PRCore.deleteJson(path)
     if type(SaveResourceFile) ~= "function" then return false, "write_unavailable" end
 
-    local resource, fileName = getDataFileInfo(path, ".json")
+    local resource, fileName = getDataFileInfo(path, ".json", true)
     local content = "null"
     local saved = SaveResourceFile(resource, fileName, content, #content)
 
-    if saved == false then return false, "save_failed" end
+    if saved ~= true and saved ~= 1 then return false, "save_failed" end
     return true, { resource = resource, path = fileName }
 end
 
@@ -168,7 +222,12 @@ function PRCore.callback.register(name, cb)
         local src = source
         local args = table.pack(...)
         CreateThread(function()
-            local result = table.pack(cb(src, table.unpack(args, 1, args.n)))
+            local result
+            if PRCore.context == "server" then
+                result = table.pack(cb(src, table.unpack(args, 1, args.n)))
+            else
+                result = table.pack(cb(table.unpack(args, 1, args.n)))
+            end
 
             if type(requestId) == "string" then
                 if PRCore.context == "server" then

@@ -109,7 +109,34 @@ function database.single(query, parameters, cb)
     return rows and rows[1] or nil
 end
 
+-- Prepared and raw batch operations are additive contracts used by
+-- persistence-heavy resources such as ox_inventory.
+function database.prepare(query, parameters, cb)
+    parameters = parameters or {}
+
+    return call(function(resolve)
+        exports.oxmysql:prepare(query, parameters, resolve)
+    end, cb)
+end
+
+function database.rawExecute(query, parameters, cb)
+    parameters = parameters or {}
+
+    return call(function(resolve)
+        exports.oxmysql:rawExecute(query, parameters, resolve)
+    end, cb)
+end
+
+function database.ready(cb)
+    if type(cb) ~= "function" then return database.isReady() end
+
+    CreateThread(function()
+        while not database.isReady() do Wait(50) end
+        cb()
+    end)
+end
 function database.transaction(queries, parameters, cb)
+    if type(parameters) == "function" then cb, parameters = parameters, nil end
     parameters = parameters or {}
 
     return call(function(resolve)
@@ -128,7 +155,17 @@ end
 database.read = database.query
 database.fetch = database.query
 database.fetchAll = database.query
-database.update = database.execute
+-- update returns affected rows, while execute retains the provider's raw result.
+function database.update(query, parameters, cb)
+    local function affectedRows(result)
+        if type(result) == "table" then return tonumber(result.affectedRows or result.affected_rows) end
+        return tonumber(result)
+    end
+    if type(cb) == "function" then
+        return database.execute(query, parameters, function(result) cb(affectedRows(result)) end)
+    end
+    return affectedRows(database.execute(query, parameters))
+end
 database.write = database.execute
 database.auto = database.run
 

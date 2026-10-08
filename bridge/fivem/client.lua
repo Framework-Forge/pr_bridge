@@ -1,6 +1,7 @@
 local fivem = {}
 
 local net = PRCore.load("@pr_bridge/bridge/fivem/net/client", _ENV) or {}
+local vehicleState = PRCore.load("@pr_bridge/bridge/fivem/vehicleState/shared", _ENV) or {}
 local vehicleCache = PRCore.load("@pr_bridge/bridge/fivem/vehicleCache/shared", _ENV) or {}
 local blips = PRCore.load("@pr_bridge/bridge/fivem/blips/shared", _ENV) or {}
 local streaming = PRCore.load("@pr_bridge/bridge/fivem/streaming/client", _ENV) or {}
@@ -9,6 +10,7 @@ local addCommand = PRCore.load("@pr_bridge/bridge/addCommand/client", _ENV)
 local objects = PRCore.load("@pr_bridge/bridge/fivem/objects/client", _ENV) or {}
 local raycast = PRCore.load("@pr_bridge/bridge/fivem/raycast/client", _ENV) or {}
 local ui = PRCore.load("@pr_bridge/bridge/fivem/ui/client", _ENV) or {}
+local nui = PRCore.load("@pr_bridge/bridge/fivem/nui/client", _ENV) or {}
 local instructionalButtons = PRCore.load("@pr_bridge/bridge/fivem/instructionalButtons/client", _ENV) or {}
 local drawtext = PRCore.load("@pr_bridge/bridge/fivem/drawtext/client", _ENV) or {}
 local dui = PRCore.load("@pr_bridge/bridge/fivem/dui/client", _ENV) or {}
@@ -27,6 +29,7 @@ local gizmo = PRCore.load("@pr_bridge/bridge/fivem/gizmo/client", setmetatable({
     PRDrawText = drawtext,
     PRStreaming = streaming,
     PREditorCamera = editorCamera,
+    PRAddKeybind = addKeybind,
 }, {
     __index = _ENV,
 })) or {}
@@ -42,12 +45,15 @@ local devtools = PRCore.load("@pr_bridge/bridge/fivem/devtools/client", setmetat
     PRDrawText = drawtext,
     PRStreaming = streaming,
     PREditorCamera = editorCamera,
+    PRAddKeybind = addKeybind,
 }, {
     __index = _ENV,
 })) or {}
 
 fivem.net = net
 fivem.vehicleCache = vehicleCache
+fivem.vehicleState = vehicleState
+fivem.entityState = vehicleState.props
 fivem.blips = blips
 fivem.streaming = streaming
 fivem.addKeybind = addKeybind
@@ -59,6 +65,7 @@ fivem.commands = addCommand
 fivem.objects = objects
 fivem.raycast = raycast
 fivem.ui = ui
+fivem.nui = nui
 fivem.instructionalButtons = instructionalButtons
 fivem.buttons = instructionalButtons
 fivem.drawtext = drawtext
@@ -82,6 +89,7 @@ fivem.setVehicleProperties = vehicleProperties.set
 
 fivem.vehicle = {
     cache = vehicleCache,
+    state = vehicleState,
     net = net,
     getProperties = vehicleProperties.get,
     setProperties = vehicleProperties.set,
@@ -101,6 +109,10 @@ fivem.vehicles = {
     findClosest = objects.getClosestVehicle,
     findClosestByModel = objects.getClosestVehicleByModel,
     tuning = tuning,
+}
+
+fivem.props = {
+    state = vehicleState.props,
 }
 
 fivem.editor = {

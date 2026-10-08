@@ -8,16 +8,38 @@ Locale = {}
 Locale.__index = Locale
 PRBridgeLocale = Locale
 
-local function translateKey(phrase, subs)
+local function translateKey(phrase, subs, ...)
     if type(phrase) ~= "string" then
         error("TypeError: translateKey function expects arg #1 to be a string")
     end
 
-    if not subs then return phrase end
+    if subs == nil then return phrase end
+
+    if type(subs) ~= "table" then
+        local ok, translated = pcall(string.format, phrase, subs, ...)
+        return ok and translated or phrase
+    end
 
     local result = phrase
     for key, value in pairs(subs) do
-        result = result:gsub("%%{" .. key .. "}", tostring(value))
+        local token = "%{" .. tostring(key) .. "}"
+        local replacement = tostring(value)
+        local parts = {}
+        local cursor = 1
+
+        while true do
+            local first, last = result:find(token, cursor, true)
+            if not first then break end
+
+            parts[#parts + 1] = result:sub(cursor, first - 1)
+            parts[#parts + 1] = replacement
+            cursor = last + 1
+        end
+
+        if #parts > 0 then
+            parts[#parts + 1] = result:sub(cursor)
+            result = table.concat(parts)
+        end
     end
 
     return result
@@ -70,7 +92,7 @@ function Locale:locale(newLocale)
     return self.currentLocale
 end
 
-function Locale:t(key, subs)
+function Locale:t(key, subs, ...)
     local phrase = self.phrases[key]
 
     if type(phrase) ~= "string" then
@@ -82,13 +104,13 @@ function Locale:t(key, subs)
         end
 
         if self.fallback then
-            return self.fallback:t(key, subs)
+            return self.fallback:t(key, subs, ...)
         end
 
         return key
     end
 
-    return translateKey(phrase, subs or {})
+    return translateKey(phrase, subs, ...)
 end
 
 function Locale:has(key)
@@ -135,6 +157,10 @@ local function addLocaleCandidate(list, seen, localeName)
     end
 
     local normalized = normalizeLocaleName(localeName)
+    local baseLanguage = normalized:match("^([%a]+)%-")
+    if baseLanguage then
+        candidates[#candidates + 1] = baseLanguage
+    end
     if normalized == "en" or normalized == "en-us" then
         candidates[#candidates + 1] = "en-US"
         candidates[#candidates + 1] = "en-us"
@@ -152,27 +178,39 @@ local function addLocaleCandidate(list, seen, localeName)
     end
 end
 
-local function getGlobalStateLocale()
-    if not GlobalState then return nil end
-
-    local localeName = GlobalState.pr_bridge_locale
+local function getCachedLocale()
+    local record
+    if Bridge and Bridge.settings then
+        record = Bridge.settings.get("locale")
+    elseif GetResourceState("pr_bridge") == "started" then
+        local ok, snapshot = pcall(function() return exports.pr_bridge:GetCachedState("locale") end)
+        if ok and type(snapshot) == "table" then record = snapshot.data end
+    end
+    local localeName = type(record) == "table" and record.name or nil
     if type(localeName) == "string" and localeName ~= "" then
         return localeName
     end
 end
 
 local function getConfiguredLocale()
-    local localeName = GetConvar("pr_bridge:locale", "")
-    local stateLocale = getGlobalStateLocale()
+    local localeName = getCachedLocale()
 
     if type(localeName) ~= "string" or localeName == "" then
-        localeName = stateLocale
-    elseif normalizeLocaleName(localeName) == "en-us" and stateLocale then
-        localeName = stateLocale
+        localeName = GetConvar("pr_bridge:locale", "")
+    end
+
+    if type(localeName) ~= "string" or localeName == "" then
+        localeName = GetConvar("locale", "")
+    end
+
+    if type(localeName) ~= "string" or localeName == "" then
+        localeName = GetConvar("qb_locale", "")
     end
 
     return normalizeLocaleName(localeName or "en-us")
 end
+
+Locale.getConfiguredName = getConfiguredLocale
 
 function Locale.init(invokingResource)
     local resource = invokingResource or GetInvokingResource() or GetCurrentResourceName()
@@ -248,11 +286,11 @@ function Locale.init(invokingResource)
         currentLocale = activeLocale,
         resource = resource,
         path = foundPath,
-        t = function(self, key, subs)
+        t = function(self, key, subs, ...)
             if type(self) == "string" then
-                return localeObj:t(self, key)
+                return localeObj:t(self, key, subs, ...)
             end
-            return localeObj:t(key, subs)
+            return localeObj:t(key, subs, ...)
         end,
         has = function(self, key)
             if type(self) == "string" then
@@ -283,12 +321,17 @@ function Locale.init(invokingResource)
         end,
         delete = function(_, target, prefix)
             localeObj:delete(target, prefix)
+        end,
+        getAll = function()
+            local phrases = {}
+            for key, value in pairs(localeObj.phrases) do phrases[key] = value end
+            return phrases
         end
     }
 
     return setmetatable(public, {
-        __call = function(_, key, subs)
-            return localeObj:t(key, subs)
+        __call = function(_, key, ...)
+            return localeObj:t(key, ...)
         end,
         __tostring = function()
             return public.currentLocale or ""

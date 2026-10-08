@@ -58,12 +58,9 @@ local function getWeatherList()
 end
 
 local function setCurrentWeather(weatherType, duration)
-    GlobalState.weather = {
-        weather = weatherType,
-        time = normalizeDuration(duration or (GlobalState.weather and GlobalState.weather.time) or 10),
-    }
-
-    return true, weatherType
+    local ok,result=callExport('SetWeatherType',1,weatherType)
+    if not ok or result==false then return false,result end
+    return true,result
 end
 
 local function resolveIndex(index, match)
@@ -98,25 +95,48 @@ function weather.IsStarted()
     return isStarted()
 end
 
+local function getWeeklyForecast()
+    local ok, result = callExport('GetWeeklyForecast')
+    if not ok then return false, result end
+    return true, type(result) == 'table' and result or {}
+end
+
 function weather.GetWeatherList()
     return getWeatherList()
+end
+
+function weather.GetWeeklyForecast()
+    return getWeeklyForecast()
+end
+
+function weather.GetRegionalWeather(regionId)
+    local ok, result = callExport('GetRegionalWeather', regionId)
+    if not ok then return false, result end
+    return true, result
 end
 
 function weather.GetState()
     local ok, weatherList = getWeatherList()
     if not ok then return false, weatherList end
 
+    local snapshotOk,snapshot=weather.GetSnapshot()
+    if not snapshotOk then return false,snapshot end
     return true, {
         weatherList = weatherList,
-        currentWeather = GlobalState.weather,
-        currentTime = GlobalState.currentTime or { hour = 0, minute = 0 },
-        timeScale = tonumber(GlobalState.timeScale) or 0,
-        freezeTime = GlobalState.freezeTime == true,
+        currentWeather = snapshot.weather,
+        currentTime = snapshot.currentTime,
+        timeScale = snapshot.timeScale,
+        freezeTime = snapshot.freezeTime == true,
+        blackOut = snapshot.blackOut == true,
+        splitRegions = snapshot.weather and snapshot.weather.splitRegions == true,
+        regions = snapshot.weather and snapshot.weather.regions or nil,
     }
 end
 
 function weather.SetWeatherType(index, weatherType, match)
     if normalizeIndex(index) == 1 then
+        local exportOk, result = callExport('SetWeatherType', 1, weatherType)
+        if exportOk and result then return true, result end
         return setCurrentWeather(weatherType, type(match) == 'table' and match.time or nil)
     end
 
@@ -144,10 +164,11 @@ end
 
 function weather.SetEventTime(index, duration, match)
     if normalizeIndex(index) == 1 then
-        local currentWeather = type(match) == 'table' and match.weather or (GlobalState.weather and GlobalState.weather.weather)
-        if currentWeather then
-            return setCurrentWeather(currentWeather, duration)
-        end
+        local exportOk, result = callExport('SetEventTime', 1, normalizeDuration(duration))
+        if exportOk and result then return true, result end
+        local snapshotOk,snapshot=weather.GetSnapshot()
+        local currentWeather = type(match) == 'table' and match.weather or (snapshotOk and snapshot.weather and snapshot.weather.weather)
+        if currentWeather then return setCurrentWeather(currentWeather, duration) end
     end
 
     local ok, resolvedIndex = resolveIndex(index, match)
@@ -198,12 +219,9 @@ function weather.RemoveWeatherEvent(index, match)
 end
 
 function weather.SetTime(hour, minute)
-    GlobalState.currentTime = {
-        hour = normalizeHour(hour),
-        minute = normalizeMinute(minute),
-    }
-
-    return true, GlobalState.currentTime
+    hour, minute = normalizeHour(hour), normalizeMinute(minute)
+    local ok, result = callExport('SetTime', hour, minute)
+    return ok and result~=false, result
 end
 
 function weather.SetTimeScale(scale)
@@ -211,14 +229,20 @@ function weather.SetTimeScale(scale)
     if scale < 2000 then scale = 2000 end
     if scale > 60000 then scale = 60000 end
 
-    GlobalState.timeScale = scale
-    return true, scale
+    local ok, result = callExport('SetTimeScale', scale)
+    return ok and result~=false, result
 end
 
 function weather.SetFreezeTime(enabled)
-    GlobalState.freezeTime = boolValue(enabled)
-    return true, GlobalState.freezeTime
+    enabled = boolValue(enabled)
+    local ok, result = callExport('SetFreezeTime', enabled)
+    if not ok then return false,result end
+    local snapshotOk,snapshot=weather.GetSnapshot()
+    return snapshotOk and snapshot.freezeTime==enabled, result
 end
+
+function weather.GetSnapshot() return callExport('GetSnapshot') end
+function weather.OnChange(fn) return AddEventHandler('pr_bridge:weather:changed',fn) end
 
 weather.getResourceName = weather.GetResourceName
 weather.isStarted = weather.IsStarted
@@ -231,6 +255,8 @@ weather.removeWeatherEvent = weather.RemoveWeatherEvent
 weather.setTime = weather.SetTime
 weather.setTimeScale = weather.SetTimeScale
 weather.setFreezeTime = weather.SetFreezeTime
+weather.getWeeklyForecast = weather.GetWeeklyForecast
+weather.getRegionalWeather = weather.GetRegionalWeather
 
 if ActiveBridges["weather"] == "renewed" then
     Debug('SUCCESS', Lang:t('Debug.WeatherDetected', { weather = 'Renewed Weather' }))

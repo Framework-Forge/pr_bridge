@@ -91,6 +91,14 @@ function framework.SetPlayerJob(source, jobName, jobGrade)
     return player and player.setJob and player.setJob(jobName, jobGrade or 0) ~= false or false
 end
 
+function framework.SetPlayerDuty(source, onDuty)
+    local player = framework.getPlayerFromId(source)
+    if not player then return false, 'invalid_player' end
+    if player.setDuty then return player.setDuty(onDuty == true) ~= false end
+    if player.setJobDuty then return player.setJobDuty(onDuty == true) ~= false end
+    return false, 'duty_unavailable'
+end
+
 function framework.PlayerHasJob(source, jobName, jobGrade)
     local job = framework.GetPlayerJob(source)
     return job.name == jobName and (jobGrade == nil or tonumber(job.grade or 0) >= tonumber(jobGrade))

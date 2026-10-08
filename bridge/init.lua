@@ -1,13 +1,21 @@
 ActiveBridges = {}
 
 if IsDuplicityVersion() then
-    local bridgeLocale = GetConvar("pr_bridge:locale", "en-us")
+    local bridgeLocale = GetConvar("pr_bridge:locale", "")
+
+    if type(bridgeLocale) ~= "string" or bridgeLocale == "" then
+        bridgeLocale = GetConvar("locale", "")
+    end
+
+    if type(bridgeLocale) ~= "string" or bridgeLocale == "" then
+        bridgeLocale = GetConvar("qb_locale", "")
+    end
+
+    if type(bridgeLocale) ~= "string" or bridgeLocale == "" then
+        bridgeLocale = "en-us"
+    end
 
     if type(bridgeLocale) == "string" and bridgeLocale ~= "" then
-        if GlobalState then
-            GlobalState.pr_bridge_locale = bridgeLocale
-        end
-
         if SetConvarReplicated then
             SetConvarReplicated("pr_bridge:locale", bridgeLocale)
         end
@@ -65,6 +73,21 @@ local function getBridge(bridgeType)
             end
         end
     end
+    if bridgeType == "targets" then
+        local forced = Config.Target
+        if type(forced) == "string" and forced ~= "" and forced ~= "auto" then
+            for i = 1, #bridge do
+                local info = bridge[i]
+                if info.resource == forced or info.folder == forced then
+                    if GetResourceState(info.resource):find("start") then
+                        setActiveBridge(bridgeType, info.folder)
+                        return ("bridge.%s.%s.%s"):format(bridgeType, info.folder, context)
+                    end
+                    break
+                end
+            end
+        end
+    end
     if bridgeType == "database" then
         local forced = Config.Database or Config.SQL
         if type(forced) == "string" and forced ~= "" and forced ~= "auto" then
@@ -109,6 +132,7 @@ Bridge = {
     banking = PRCore.load(getBridge("banking")),
     phone = PRCore.load(getBridge("phones")),
     progress = PRCore.load(getBridge("progressbar")),
+    minigame = PRCore.load(getBridge("minigames")),
     weather = PRCore.load(getBridge("weather")),
     fuel = PRCore.load(getBridge("fuel")),
     vehicle_key = PRCore.load(getBridge("vehicle_key"))
@@ -124,21 +148,59 @@ Bridge.loadFile = PRCore.loadFile
 Bridge.loadJson = PRCore.loadJson
 Bridge.readJson = PRCore.readJson
 Bridge.saveJson = PRCore.saveJson
+Bridge.jsonDraft = PRCore.jsonDraft
+Bridge.withJsonLock = PRCore.withJsonLock
+Bridge.wrapJsonMutations = PRCore.wrapJsonMutations
+Bridge.loadJsonRecovery = PRCore.loadJsonRecovery
+Bridge.saveJsonRecovery = PRCore.saveJsonRecovery
+Bridge.recordJsonIncident = PRCore.recordJsonIncident
+Bridge.saveJsonBatch = PRCore.saveJsonBatch
 Bridge.writeJson = PRCore.writeJson
 Bridge.updateJson = PRCore.updateJson
 Bridge.mergeJson = PRCore.mergeJson
 Bridge.deleteJson = PRCore.deleteJson
 Bridge.jsonExists = PRCore.jsonExists
 Bridge.loadModule = PRCore.loadModule
-Bridge.callback = PRCore.callback
+Bridge.environment = PRCore.load("bridge.environment")
+PRCore.environment = Bridge.environment
 Bridge.debug = PRDebug
 Bridge.utils = PRCore.load("bridge.utils.shared") or {}
 Bridge.math = PRCore.load("bridge.utils.numbers") or {}
 Bridge.table = PRCore.load("bridge.utils.tables") or {}
+Bridge.string = PRCore.load("bridge.utils.strings") or {}
+Bridge.timer = PRCore.load("bridge.utils.timer")
 Bridge.ids = PRCore.load("bridge.utils.ids") or {}
 Bridge.callback = PRCore.load(("bridge.callback.%s"):format(PRCore.context)) or PRCore.callback
+local callbackMode = "legacy"
+if Bridge.environment.isSecureCallbackEnabled() then
+    local secureCallback = PRCore.load(("bridge.callback.secure_%s"):format(PRCore.context))
+    if secureCallback then
+        Bridge.callback = secureCallback
+        callbackMode = "secure"
+    end
+end
+Bridge.callback.getMode = function() return callbackMode end
 Bridge.translator = PRCore.load(("bridge.translator.%s"):format(PRCore.context), env, true) or {}
 
+if IsDuplicityVersion() then
+    local limits = Bridge.environment.getCallbackLimits()
+    print(("^2[pr_bridge]^0 environment=%s callback=%s timeout=%sms maxPending=%s maxPendingPerPlayer=%s maxInboundPerPlayer=%s"):format(
+        Bridge.environment.getMode(), callbackMode, limits.timeout, limits.maxPending,
+        limits.maxPendingPerPlayer, limits.maxInboundPerPlayer
+    ))
+end
+
+if PRCore.context == "client" then
+    function Bridge.setClipboard(value)
+        assert(type(value) == "string", "clipboard value must be a string")
+        TriggerEvent("pr_bridge:ui:send", "setClipboard", value)
+        return true
+    end
+else
+    function Bridge.setClipboard()
+        return false, "client_only"
+    end
+end
 Bridge.inventories = Bridge.inventory
 Bridge.notifications = Bridge.notify
 Bridge.notification = Bridge.notify
@@ -146,15 +208,29 @@ Bridge.menu = Bridge.menus
 Bridge.targets = Bridge.target
 Bridge.phones = Bridge.phone
 Bridge.progressbar = Bridge.progress
+Bridge.minigames = Bridge.minigame
+local skillCheckAdapter = Bridge.minigame or {}
+if PRCore.context == "client" and type(skillCheckAdapter.SkillCheck or skillCheckAdapter.skillCheck) ~= "function" then
+    skillCheckAdapter = PRCore.load("bridge.minigames.default.client") or {}
+end
+Bridge.skillCheck = skillCheckAdapter.SkillCheck or skillCheckAdapter.skillCheck
+Bridge.cancelSkillCheck = skillCheckAdapter.CancelSkillCheck or skillCheckAdapter.cancelSkillCheck
 Bridge.textUIAdapter = Bridge.textuiAdapter
 Bridge.textuiBridge = Bridge.textuiAdapter
 Bridge.textUIBridge = Bridge.textuiAdapter
+Bridge.garage = PRCore.load(("bridge.garages.%s"):format(PRCore.context))(Bridge)
 Bridge.bank = Bridge.banking
 Bridge.adapters = { framework=Bridge.framework, inventory=Bridge.inventory, notification=Bridge.notify, menu=Bridge.menus, target=Bridge.target, textui=Bridge.textuiAdapter, banking=Bridge.banking, phone=Bridge.phone, progress=Bridge.progress, weather=Bridge.weather }
 Bridge.vehicleKey = Bridge.vehicle_key
 Bridge.vehicleKeys = Bridge.vehicle_key
 Bridge.fivem = PRCore.load(("bridge.fivem.%s"):format(PRCore.context)) or {}
 Bridge.vehicleProperties = Bridge.fivem.vehicleProperties
+Bridge.addKeybind = Bridge.fivem.addKeybind
+Bridge.keybind = Bridge.fivem.keybind
+Bridge.keybinds = Bridge.fivem.keybinds
+Bridge.addCommand = Bridge.fivem.addCommand
+Bridge.command = Bridge.fivem.command
+Bridge.commands = Bridge.fivem.commands
 
 Bridge.github = PRCore.load(("bridge.github.%s"):format(PRCore.context)) or {}
 Bridge.versionCheck = Bridge.github.versionCheck
@@ -205,6 +281,142 @@ Bridge.devLaser = Bridge.fivem.devLaser
 Bridge.devtools = Bridge.fivem.devtools
 Bridge.devTools = Bridge.fivem.devTools
 Bridge.developerTools = Bridge.fivem.developerTools
+
+
+if PRCore.context == "client" then
+    local UI = PRCore.load("interface.client.ui", nil, true) or {
+        RegisterContext = Bridge.menus and Bridge.menus.RegisterContext,
+        ShowContext = Bridge.menus and Bridge.menus.ShowContext,
+        HideContext = Bridge.menus and Bridge.menus.HideContext,
+        GetOpenContextMenu = Bridge.menus and Bridge.menus.GetOpenContextMenu,
+        AlertDialog = Bridge.menus and Bridge.menus.AlertDialog,
+        InputDialog = Bridge.menus and Bridge.menus.InputDialog,
+        Notify = Bridge.notify and Bridge.notify.Notify,
+        ShowTextUI = Bridge.textuiAdapter and Bridge.textuiAdapter.Show,
+        HideTextUI = Bridge.textuiAdapter and Bridge.textuiAdapter.Hide,
+        IsTextUIOpen = function()
+            if GetResourceState("ox_lib"):find("start") then
+                return exports.ox_lib:isTextUIOpen()
+            end
+            return false
+        end,
+    }
+    if UI then
+        Bridge.interface = UI
+        Bridge.menus = UI
+        Bridge.menu = UI
+        if Bridge.adapters then Bridge.adapters.menu = UI end
+        Bridge.RegisterContext = UI.RegisterContext
+        Bridge.registerContext = UI.registerContext or UI.RegisterContext
+        Bridge.ShowContext = UI.ShowContext
+        Bridge.showContext = UI.showContext or UI.ShowContext
+        Bridge.HideContext = UI.HideContext
+        Bridge.hideContext = UI.hideContext or UI.HideContext
+        Bridge.GetOpenContextMenu = UI.GetOpenContextMenu
+        Bridge.getOpenContextMenu = UI.getOpenContextMenu or UI.GetOpenContextMenu
+        Bridge.RegisterMenu = UI.RegisterMenu
+        Bridge.registerMenu = UI.registerMenu or UI.RegisterMenu
+        Bridge.ShowMenu = UI.ShowMenu
+        Bridge.showMenu = UI.showMenu or UI.ShowMenu
+        Bridge.HideMenu = UI.HideMenu
+        Bridge.hideMenu = UI.hideMenu or UI.HideMenu
+        Bridge.AlertDialog = UI.AlertDialog
+        Bridge.alertDialog = UI.alertDialog or UI.AlertDialog
+        Bridge.InputDialog = UI.InputDialog
+        Bridge.inputDialog = UI.inputDialog or UI.InputDialog
+        Bridge.Notify = UI.Notify
+        Bridge.NotifyBubble = UI.NotifyBubble
+        Bridge.notifyBubble = UI.notifyBubble or UI.NotifyBubble
+        Bridge.HideNotifyBubble = UI.HideNotifyBubble
+        Bridge.hideNotifyBubble = UI.hideNotifyBubble or UI.HideNotifyBubble
+        if type(Bridge.notify) == "table" then
+            Bridge.notify.NotifyBubble = Bridge.NotifyBubble
+            Bridge.notify.HideNotifyBubble = Bridge.HideNotifyBubble
+        end
+        Bridge.ShowTextUI = UI.ShowTextUI
+        Bridge.showTextUI = UI.showTextUI or UI.ShowTextUI
+        Bridge.HideTextUI = UI.HideTextUI
+        Bridge.hideTextUI = UI.hideTextUI or UI.HideTextUI
+        Bridge.IsTextUIOpen = UI.IsTextUIOpen
+        Bridge.isTextUIOpen = UI.isTextUIOpen or UI.IsTextUIOpen
+        local NativeTextUI = {
+            Show = UI.ShowTextUI,
+            show = UI.showTextUI or UI.ShowTextUI,
+            Hide = UI.HideTextUI,
+            hide = UI.hideTextUI or UI.HideTextUI,
+            IsOpen = UI.IsTextUIOpen,
+            isOpen = UI.isTextUIOpen or UI.IsTextUIOpen,
+        }
+        Bridge.textuiAdapter = NativeTextUI
+        Bridge.textUIAdapter = NativeTextUI
+        Bridge.textuiBridge = NativeTextUI
+        Bridge.textUIBridge = NativeTextUI
+        if Bridge.adapters then Bridge.adapters.textui = NativeTextUI end
+        if Bridge.framework then
+            Bridge.framework.ShowTextUI = UI.ShowTextUI
+            Bridge.framework.HideTextUI = UI.HideTextUI
+        end
+        Bridge.OpenVisualAdminMenu = UI.OpenVisualAdminMenu
+        Bridge.openVisualAdminMenu = UI.openVisualAdminMenu or UI.OpenVisualAdminMenu
+        Bridge.GetVisualConfig = UI.GetVisualConfig
+        Bridge.getVisualConfig = UI.getVisualConfig or UI.GetVisualConfig
+    end
+end
+
+if PRCore.context == "server" then
+    local bubbleSequence = 0
+    local function prepareBubble(source, data, all)
+        if type(data) == "string" then data = { description = data } end
+        if type(data) ~= "table" then return nil end
+        local payload = {}
+        for key, value in pairs(data) do payload[key] = value end
+        bubbleSequence = bubbleSequence + 1
+        payload.id = tostring(payload.id or (GetCurrentResourceName() .. ":server_bubble:" .. bubbleSequence))
+        if not all and payload.serverId == nil and payload.playerId == nil and payload.entity == nil and payload.netId == nil then
+            payload.serverId = source
+        end
+        return payload
+    end
+
+    function Bridge.NotifyBubble(source, data)
+        source = tonumber(source)
+        if not source or source <= 0 then return false end
+        local payload = prepareBubble(source, data, false)
+        if not payload then return false end
+        TriggerClientEvent("pr_bridge:notifyBubble", source, payload)
+        return payload.id
+    end
+
+    function Bridge.NotifyBubbleAll(source, data)
+        if type(source) ~= "number" then
+            data = source
+            source = type(data) == "table" and tonumber(data.serverId or data.source) or nil
+        end
+        source = tonumber(source)
+        if not source or source <= 0 then return false end
+        local payload = prepareBubble(source, data, true)
+        if not payload then return false end
+        payload.serverId = source
+        TriggerClientEvent("pr_bridge:notifyBubble", -1, payload)
+        return payload.id
+    end
+
+    function Bridge.HideNotifyBubble(source, id)
+        source = tonumber(source)
+        if not source or source == 0 or id == nil then return false end
+        TriggerClientEvent("pr_bridge:notifyBubble:hideNet", source, tostring(id))
+        return true
+    end
+
+    Bridge.notifyBubble = Bridge.NotifyBubble
+    Bridge.notifyBubbleAll = Bridge.NotifyBubbleAll
+    Bridge.hideNotifyBubble = Bridge.HideNotifyBubble
+    if type(Bridge.notify) == "table" then
+        Bridge.notify.NotifyBubble = Bridge.NotifyBubble
+        Bridge.notify.NotifyBubbleAll = Bridge.NotifyBubbleAll
+        Bridge.notify.HideNotifyBubble = Bridge.HideNotifyBubble
+    end
+end
 
 local cacheStore = {}
 local cacheEvents = {}
@@ -337,6 +549,25 @@ setmetatable(bridgeCache, {
 })
 
 Bridge.cache = bridgeCache
+local createAutomaticCache = PRCore.load("bridge.cache.shared")
+if createAutomaticCache then
+    bridgeCache = createAutomaticCache(Bridge, ActiveBridges)
+    local centralizeCache = PRCore.load("bridge.cache.central")
+    if centralizeCache then centralizeCache(bridgeCache) end
+    local resourceCache = PRCore.load("bridge.cache.resources")
+    if resourceCache then resourceCache(bridgeCache) end
+    Bridge.cache = bridgeCache
+    Bridge.onCache = bridgeCache.onChange
+    Bridge.getCacheMetrics = bridgeCache.getMetrics
+end
+Bridge.settings = PRCore.load("bridge.settings")(Bridge)
+if PRCore.context == "server" then
+    Bridge.settings.publish("locale", { name = Locale.getConfiguredName() })
+end
+if PRCore.context == "client" then
+    local normalizeEntities = PRCore.load("bridge.compat.entities_client")
+    if normalizeEntities then normalizeEntities(Bridge) end
+end
 pr_lib = Bridge
 if _G then
     _G.pr_lib = Bridge
@@ -363,6 +594,31 @@ if PRCore.context == "client" and GetConvar("pr_bridge:translator_auto_notify", 
         end
     end
 end
+
+if type(Bridge.notify) == "table" then
+    local notifyMetatable = getmetatable(Bridge.notify) or {}
+    notifyMetatable.__call = notifyMetatable.__call or function(self, ...)
+        local callback = Bridge.Notify or self.Notify or self.notify
+        if type(callback) ~= "function" then return false end
+        return callback(...)
+    end
+    setmetatable(Bridge.notify, notifyMetatable)
+end
+
+exports("getCacheSnapshot", function()
+    return Bridge.cache and Bridge.cache.getSnapshot and Bridge.cache.getSnapshot() or {}
+end)
+exports("GetResourceState", function(resource,key)
+    return Bridge.cache.GetResourceState(resource,key)
+end)
+
+exports("getCachedEntity", function(identifier)
+    return Bridge.cache and Bridge.cache.getEntitySnapshot and Bridge.cache.getEntitySnapshot(identifier) or nil
+end)
+
+exports("getCachedEntities", function(kind)
+    return Bridge.cache and Bridge.cache.getEntities and Bridge.cache.getEntities(kind) or {}
+end)
 
 exports("getLib", function()
     return Bridge

@@ -48,9 +48,11 @@ function framework.getPlayerJob(source, dataType)
     return dataType and job[dataType] or job
 end
 function framework.SetPlayerJob(source, jobName, grade) return false end
+function framework.SetPlayerDuty(source, onDuty) return false end
 function framework.PlayerHasJob(source, jobName, grade) return false end
 function framework.GetJobCount(jobName) return 0 end
 function framework.GetFrameworkJobs() return {} end
+function framework.GetFrameworkGangs() return {} end
 function framework.GetAllPlayers()
     local players = {}
     for _, source in ipairs(GetPlayers()) do players[#players + 1] = tonumber(source) end

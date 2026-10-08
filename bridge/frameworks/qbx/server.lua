@@ -33,6 +33,10 @@ function framework.GetPlayerFromIdentifier(identifier)
     return qbx_core:GetPlayerByCitizenId(identifier)
 end
 
+function framework.GetOfflinePlayer(identifier)
+    return qbx_core:GetOfflinePlayer(identifier)
+end
+
 function framework.getPlayerSourceFromPlayer(Player)
     return Player.PlayerData.source
 end
@@ -83,6 +87,35 @@ function framework.setPlayerMetadata(source, meta, value)
     Player.Functions.SetMetaData(meta, value)
 end
 
+-- Status values are owned by qbx_core's server cache. These methods avoid a
+-- metadata read/write race and keep cache, metadata and HUD synchronized.
+function framework.GetPlayerStatus(source, status)
+    local ok, value = pcall(function()
+        return qbx_core:GetStatus(tonumber(source), status)
+    end)
+    if not ok then return nil, value end
+    return value
+end
+
+function framework.SetPlayerStatus(source, status, value)
+    local ok, result = pcall(function()
+        return qbx_core:SetStatus(tonumber(source), status, value)
+    end)
+    if not ok then return false, result end
+    return result ~= false
+end
+
+function framework.AddPlayerStatus(source, status, amount)
+    local ok, result = pcall(function()
+        return qbx_core:AddStatus(tonumber(source), status, amount)
+    end)
+    if not ok then return false, result end
+    return result ~= false
+end
+
+framework.getPlayerStatus = framework.GetPlayerStatus
+framework.setPlayerStatus = framework.SetPlayerStatus
+framework.addPlayerStatus = framework.AddPlayerStatus
 function framework.addSocietyBalance(job, amount)
     if not exports['Renewed-Banking'] then return end
     exports['Renewed-Banking']:addAccountMoney(job, amount)
@@ -99,6 +132,11 @@ end
 
 function framework.GetPlayer(source)
     return qbx_core:GetPlayer(source)
+end
+
+function framework.GetPlayerData(source)
+    local Player = qbx_core:GetPlayer(source)
+    return Player and Player.PlayerData or nil
 end
 
 function framework.HasPermission(source, permissions)
@@ -156,6 +194,102 @@ function framework.getPlayerJob(source, dataType)
     end
 end
 
+function framework.GetPlayerJob(source)
+    local Player = qbx_core:GetPlayer(source)
+    return Player and Player.PlayerData.job or nil
+end
+
+function framework.SetPlayerJob(source, jobName, grade)
+    local ok, success, result = pcall(function()
+        return qbx_core:SetJob(source, jobName, tonumber(grade) or 0)
+    end)
+
+    if not ok then return false, success end
+    return success == true, result
+end
+
+function framework.SetPlayerDuty(source, onDuty)
+    local ok, result = pcall(function()
+        return qbx_core:SetJobDuty(source, onDuty == true)
+    end)
+
+    if not ok then return false, result end
+    return result ~= false, result
+end
+
+function framework.AddPlayerToJob(citizenid, jobName, grade)
+    local ok, success, result = pcall(function()
+        return qbx_core:AddPlayerToJob(citizenid, jobName, tonumber(grade) or 0)
+    end)
+
+    if not ok then return false, success end
+    return success == true, result
+end
+
+function framework.RemovePlayerFromJob(citizenid, jobName)
+    local ok, success, result = pcall(function()
+        return qbx_core:RemovePlayerFromJob(citizenid, jobName)
+    end)
+
+    if not ok then return false, success end
+    return success == true, result
+end
+
+function framework.SetPlayerPrimaryJob(citizenid, jobName)
+    local ok, success, result = pcall(function()
+        return qbx_core:SetPlayerPrimaryJob(citizenid, jobName)
+    end)
+
+    if not ok then return false, success end
+    return success == true, result
+end
+
+function framework.AddPlayerToGang(citizenid, gangName, grade)
+    local ok, success, result = pcall(function()
+        return qbx_core:AddPlayerToGang(citizenid, gangName, tonumber(grade) or 0)
+    end)
+
+    if not ok then return false, success end
+    return success == true, result
+end
+
+function framework.RemovePlayerFromGang(citizenid, gangName)
+    local ok, success, result = pcall(function()
+        return qbx_core:RemovePlayerFromGang(citizenid, gangName)
+    end)
+
+    if not ok then return false, success end
+    return success == true, result
+end
+
+function framework.SetPlayerPrimaryGang(citizenid, gangName)
+    local ok, success, result = pcall(function()
+        return qbx_core:SetPlayerPrimaryGang(citizenid, gangName)
+    end)
+
+    if not ok then return false, success end
+    return success == true, result
+end
+
+function framework.PlayerHasJob(source, jobName, grade)
+    local Player = qbx_core:GetPlayer(source)
+    if not Player or not Player.PlayerData then return false end
+
+    jobName = tostring(jobName or ''):lower()
+    local jobs = Player.PlayerData.jobs or {}
+    local playerGrade = jobs[jobName]
+
+    if playerGrade == nil and Player.PlayerData.job and Player.PlayerData.job.name == jobName then
+        local currentGrade = Player.PlayerData.job.grade
+        playerGrade = type(currentGrade) == 'table' and (currentGrade.level or currentGrade.grade) or currentGrade
+    end
+
+    if playerGrade == nil then return false end
+    if grade == nil then return true end
+
+    return (tonumber(playerGrade) or 0) >= (tonumber(grade) or 0)
+end
+
 function framework.getPlayerMoney(source, moneyWallet)
     if moneyWallet == 'money' then moneyWallet = 'cash' end
     if moneyWallet == 'black_money' then moneyWallet = 'blackmoney' end
@@ -165,7 +299,7 @@ end
 function framework.addPlayerMoney(source, moneyWallet, amount, reason)
     if moneyWallet == 'money' then moneyWallet = 'cash' end
     if moneyWallet == 'black_money' then moneyWallet = 'blackmoney' end
-    qbx_core:AddMoney(source, moneyWallet, amount, reason or "Unknown")
+    return qbx_core:AddMoney(source, moneyWallet, amount, reason or "Unknown")
 end
 
 function framework.removePlayerMoney(source, moneyWallet, amount, reason)

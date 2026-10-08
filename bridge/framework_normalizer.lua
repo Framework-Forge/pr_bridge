@@ -4,6 +4,45 @@ return function(framework, context, inventory, banking, notify, textui, activeFr
     local frameworkResources = { qb="qb-core", qbx="qbx_core", esx="es_extended", ox="ox_core", nd="ND_Core", tmc="core", default="standalone" }
     if not framework.GetResourceName then function framework.GetResourceName() return frameworkResources[activeFramework] or activeFramework end end
 
+    -- Vehicle catalog stays authoritative in the selected framework.
+    if not framework.GetVehiclesByHash then
+        function framework.GetVehiclesByHash(model)
+            local hash = model ~= nil and (tonumber(model) or joaat(model)) or nil
+            if activeFramework == "qbx" then
+                return exports.qbx_core:GetVehiclesByHash(hash)
+            end
+            local vehicles = {}
+            if activeFramework == "qb" then
+                local core = exports["qb-core"]:GetCoreObject()
+                for name, data in pairs(core.Shared and core.Shared.Vehicles or {}) do
+                    local vehicleHash = tonumber(data.hash) or joaat(data.model or name)
+                    vehicles[vehicleHash] = data
+                end
+            end
+            if hash ~= nil then return vehicles[hash] end
+            return vehicles
+        end
+    end
+    if not framework.GetVehicleData then
+        function framework.GetVehicleData(model)
+            if type(model) ~= "string" and type(model) ~= "number" then return nil end
+            return framework.GetVehiclesByHash(model)
+        end
+    end
+    if context == "server" and not framework.SetVehiclePersistence then
+        function framework.SetVehiclePersistence(vehicle, enabled)
+            if not vehicle or vehicle == 0 or not DoesEntityExist(vehicle) then return false end
+            if activeFramework == "qbx" then
+                local result
+                if enabled then result = exports.qbx_core:EnablePersistence(vehicle)
+                else result = exports.qbx_core:DisablePersistence(vehicle) end
+                return result ~= false
+            end
+            SetEntityOrphanMode(vehicle, enabled and 2 or 0)
+            return true
+        end
+    end
+
     local function alias(canonical, ...)
         if type(framework[canonical]) == "function" then return end
         for index = 1, select("#", ...) do
@@ -29,6 +68,12 @@ return function(framework, context, inventory, banking, notify, textui, activeFr
     alias("getPlayerMetadata", "GetPlayerMetadata")
     alias("SetPlayerMetadata", "setPlayerMetadata")
     alias("setPlayerMetadata", "SetPlayerMetadata")
+    alias("GetPlayerStatus", "getPlayerStatus")
+    alias("getPlayerStatus", "GetPlayerStatus")
+    alias("SetPlayerStatus", "setPlayerStatus")
+    alias("setPlayerStatus", "SetPlayerStatus")
+    alias("AddPlayerStatus", "addPlayerStatus")
+    alias("addPlayerStatus", "AddPlayerStatus")
     alias("GetPlayerAccountBalance", "getPlayerMoney", "GetAccountBalance")
     alias("AddPlayerAccountBalance", "addPlayerMoney", "AddAccountBalance")
     alias("RemovePlayerAccountBalance", "removePlayerMoney", "RemoveAccountBalance")
@@ -40,11 +85,56 @@ return function(framework, context, inventory, banking, notify, textui, activeFr
 
     if context == "server" then
         framework.GetPlayerData = framework.GetPlayerData or framework.GetPlayer
+        -- Identity contract for phone consumers. Provider details stay in PR Bridge.
+        if not framework.GetPhoneProfile then
+            function framework.GetPhoneProfile(source)
+                local player = framework.GetPlayer and framework.GetPlayer(source)
+                local data = player and (player.PlayerData or player)
+                if not data then return nil end
+                local info = data.charinfo or data
+                local metadata = data.metadata or {}
+                local identifier = framework.GetIdentifier and framework.GetIdentifier(source)
+                local phone = info.phone or data.phone_number or metadata.phoneNumber or metadata.phone
+                if not identifier or phone == nil or tostring(phone) == '' then return nil end
+                return { source = tonumber(source), identifier = identifier, phoneNumber = tostring(phone),
+                    firstname = info.firstname or info.firstName or '', lastname = info.lastname or info.lastName or '' }
+            end
+        end
+
+        if not framework.GetPlayerStatus then
+            function framework.GetPlayerStatus(source, status)
+                return framework.GetPlayerMetadata and framework.GetPlayerMetadata(source, status)
+            end
+        end
+        if not framework.SetPlayerStatus then
+            function framework.SetPlayerStatus(source, status, value)
+                if not framework.SetPlayerMetadata then return false, "status_unavailable" end
+                local result = framework.SetPlayerMetadata(source, status, value)
+                return result ~= false
+            end
+        end
+        if not framework.AddPlayerStatus then
+            function framework.AddPlayerStatus(source, status, amount)
+                local current = tonumber(framework.GetPlayerStatus(source, status)) or 0
+                local value = math.max(0, math.min(100, current + (tonumber(amount) or 0)))
+                return framework.SetPlayerStatus(source, status, value)
+            end
+        end
+        framework.getPlayerStatus = framework.getPlayerStatus or framework.GetPlayerStatus
+        framework.setPlayerStatus = framework.setPlayerStatus or framework.SetPlayerStatus
+        framework.addPlayerStatus = framework.addPlayerStatus or framework.AddPlayerStatus
         if not framework.GetFrameworkJobs then
             function framework.GetFrameworkJobs()
                 if activeFramework == "qb" then local core=exports["qb-core"]:GetCoreObject(); return core.Shared and core.Shared.Jobs or {} end
                 if activeFramework == "qbx" then local ok,jobs=pcall(function() return exports.qbx_core:GetJobs() end); return ok and jobs or {} end
                 if activeFramework == "esx" then local core=exports.es_extended:getSharedObject(); return core.GetJobs and core.GetJobs() or core.Jobs or {} end
+                return {}
+            end
+        end
+        if not framework.GetFrameworkGangs then
+            function framework.GetFrameworkGangs()
+                if activeFramework == "qb" then local core=exports["qb-core"]:GetCoreObject(); return core.Shared and core.Shared.Gangs or {} end
+                if activeFramework == "qbx" then local ok,gangs=pcall(function() return exports.qbx_core:GetGangs() end); return ok and gangs or {} end
                 return {}
             end
         end
@@ -76,17 +166,85 @@ return function(framework, context, inventory, banking, notify, textui, activeFr
             function framework.SetPlayerJob(source, jobName, grade)
                 local player = framework.GetPlayer and framework.GetPlayer(source)
                 if not player then return false end
-                if player.Functions and player.Functions.SetJob then return player.Functions.SetJob(jobName, grade or 0) ~= false end
-                if player.setJob then player.setJob(jobName, grade or 0); return true end
-                if player.setGroup then player.setGroup(jobName, grade or 0); return true end
-                return false
+                local ok, success, result = pcall(function()
+                    if player.Functions and player.Functions.SetJob then return player.Functions.SetJob(jobName, grade or 0) end
+                    if player.setJob then return player.setJob(jobName, grade or 0) end
+                    if player.setGroup then return player.setGroup(jobName, grade or 0) end
+                    return false
+                end)
+                if not ok then return false, success end
+                return success ~= false, result
             end
         end
+
+        if not framework.SetPlayerDuty then
+            function framework.SetPlayerDuty(source, onDuty)
+                local player = framework.GetPlayer and framework.GetPlayer(source)
+                if not player then return false end
+                local ok, success, result = pcall(function()
+                    if player.Functions and player.Functions.SetJobDuty then return player.Functions.SetJobDuty(onDuty == true) end
+                    if player.setDuty then return player.setDuty(onDuty == true) end
+                    if player.setJobDuty then return player.setJobDuty(onDuty == true) end
+                    if player.set then player.set("onduty", onDuty == true); return true end
+                    return false
+                end)
+                if not ok then return false, success end
+                return success ~= false, result
+            end
+        end
+
+        local function sourceFromIdentifier(identifier)
+            for _, source in ipairs(GetPlayers()) do
+                source = tonumber(source)
+                if framework.GetPlayerIdentifier and framework.GetPlayerIdentifier(source) == identifier then return source end
+                if framework.GetIdentifier and framework.GetIdentifier(source) == identifier then return source end
+            end
+        end
+
+        if not framework.AddPlayerToJob then
+            function framework.AddPlayerToJob(identifier, jobName, grade)
+                local source = tonumber(identifier) or sourceFromIdentifier(identifier)
+                if not source then return false, "player_not_online" end
+                return framework.SetPlayerJob(source, jobName, grade or 0)
+            end
+        end
+
+        if not framework.RemovePlayerFromJob then
+            function framework.RemovePlayerFromJob(identifier)
+                local source = tonumber(identifier) or sourceFromIdentifier(identifier)
+                if not source then return false, "player_not_online" end
+                return framework.SetPlayerJob(source, "unemployed", 0)
+            end
+        end
+
+        framework.SetPlayerPrimaryJob = framework.SetPlayerPrimaryJob or framework.AddPlayerToJob
+
+        if not framework.AddPlayerToGang then
+            function framework.AddPlayerToGang(identifier, gangName, grade)
+                local source = tonumber(identifier) or sourceFromIdentifier(identifier)
+                if not source then return false, "player_not_online" end
+                local player = framework.GetPlayer and framework.GetPlayer(source)
+                if not player then return false, "invalid_player" end
+                if player.Functions and player.Functions.SetGang then return player.Functions.SetGang(gangName, grade or 0) end
+                if player.setGang then return player.setGang(gangName, grade or 0) end
+                return false, "gang_unavailable"
+            end
+        end
+
+        if not framework.RemovePlayerFromGang then
+            function framework.RemovePlayerFromGang(identifier)
+                return framework.AddPlayerToGang(identifier, "none", 0)
+            end
+        end
+
+        framework.SetPlayerPrimaryGang = framework.SetPlayerPrimaryGang or framework.AddPlayerToGang
 
         if not framework.PlayerHasJob then
             function framework.PlayerHasJob(source, jobName, grade)
                 local job = framework.GetPlayerJob and framework.GetPlayerJob(source)
-                return type(job) == "table" and job.name == jobName and (grade == nil or tonumber(job.grade or 0) >= tonumber(grade))
+                local current = type(job) == "table" and tostring(job.name or ""):lower() or ""
+                local required = tostring(jobName or ""):lower()
+                return current == required and (grade == nil or tonumber(job.grade or 0) >= tonumber(grade))
             end
         end
 
@@ -128,7 +286,7 @@ return function(framework, context, inventory, banking, notify, textui, activeFr
         if not framework.IsPlayerDead then function framework.IsPlayerDead() local data=playerData(); return IsEntityDead(PlayerPedId()) or data.dead==true or data.metadata and (data.metadata.isdead==true or data.metadata.dead==true) end end
         if not framework.GetPlayerJob then function framework.GetPlayerJob() local data=playerData(); local job=data.job or data.jobs and data.jobs[1] or {}; return {name=job.name or "",label=job.label or "",grade=type(job.grade)=="table" and (job.grade.level or 0) or job.grade or 0,gradeLabel=type(job.grade)=="table" and job.grade.name or job.grade_label,onduty=job.onduty} end end
         framework.getPlayerJob=framework.getPlayerJob or function(dataType) local job=framework.GetPlayerJob(); return dataType and job[dataType] or job end
-        if not framework.PlayerHasJob then function framework.PlayerHasJob(jobName,grade) local job=framework.GetPlayerJob(); return job.name==jobName and (grade==nil or tonumber(job.grade or 0)>=tonumber(grade)) end end
+        if not framework.PlayerHasJob then function framework.PlayerHasJob(jobName,grade) local job=framework.GetPlayerJob(); return tostring(job.name or ""):lower()==tostring(jobName or ""):lower() and (grade==nil or tonumber(job.grade or 0)>=tonumber(grade)) end end
         if not framework.GetPlayerGroup then function framework.GetPlayerGroup() return playerData().group or "user" end end
         if not framework.GetClosestPlayer then function framework.GetClosestPlayer() local closest,distance=-1,-1; local coords=GetEntityCoords(PlayerPedId()); for _,player in ipairs(GetActivePlayers()) do if player~=PlayerId() then local current=#(GetEntityCoords(GetPlayerPed(player))-coords); if distance<0 or current<distance then closest,distance=player,current end end end; return closest,distance end end
         if not framework.GetClosestVehicle then function framework.GetClosestVehicle() local coords=GetEntityCoords(PlayerPedId()); local vehicle=GetClosestVehicle(coords.x,coords.y,coords.z,100.0,0,71); return vehicle, vehicle~=0 and #(GetEntityCoords(vehicle)-coords) or -1 end end

@@ -50,21 +50,46 @@ local function isWhitelistName(value)
     return type(value) == "string" and value:sub(1, 10) == "pr_bridge:"
 end
 
+local function isAceAllowedResult(value)
+    return value == true or value == 1
+end
+
+local function isAceAllowed(source, aceName, aceApi)
+    if aceApi and type(aceApi.isPlayerAceAllowed) == "function" then
+        return isAceAllowedResult(aceApi.isPlayerAceAllowed(source, aceName))
+    end
+
+    local principal = ('player.%s'):format(tostring(tonumber(source) or source or ''))
+    if principal ~= 'player.' then
+        local ok, allowed = pcall(IsPrincipalAceAllowed, principal, aceName)
+        if ok and isAceAllowedResult(allowed) then return true end
+    end
+
+    local numericSource = tonumber(source)
+    if numericSource and isAceAllowedResult(IsPlayerAceAllowed(numericSource, aceName)) then return true end
+
+    local textSource = tostring(source or "")
+    if textSource ~= "" and isAceAllowedResult(IsPlayerAceAllowed(textSource, aceName)) then return true end
+
+    return false
+end
+
 local function canRunCommand(source, commandName, properties)
     if source == 0 then return true end
+
+    local aceApi = PRAce or Bridge and Bridge.ace or PRCore.load("@pr_bridge/bridge/ace/server", _ENV)
+    if aceApi and aceApi.isAdminWhitelisted(source) then return true end
 
     if type(properties.canAccess) == "function" then
         return properties.canAccess(source, commandName, properties) == true
     end
 
-    local aceApi = PRAce or Bridge and Bridge.ace
-
     if aceApi and properties.whitelist and aceApi.isWhitelisted(source, properties.whitelist) then return true end
     if aceApi and isWhitelistName(properties.restricted) and aceApi.isWhitelisted(source, properties.restricted) then return true end
 
-    if properties.ace and IsPlayerAceAllowed(source, properties.ace) then return true end
+    if properties.ace and isAceAllowed(source, properties.ace, aceApi) then return true end
     if properties.restricted and not isWhitelistName(properties.restricted) then
-        if IsPlayerAceAllowed(source, ("command.%s"):format(commandName)) then return true end
+        if isAceAllowed(source, ("command.%s"):format(commandName), aceApi) then return true end
     end
 
     if properties.groups or properties.jobs or properties.permission then
@@ -159,7 +184,7 @@ local function parseParams(source, args, raw, definitions)
         parsed[i] = definition
 
         if definition.name then
-            parsed[definition.name] = definition
+            parsed[definition.name] = value
             parsed.values[definition.name] = value
         end
     end
@@ -222,32 +247,113 @@ local function addAce(restricted, commandName)
     end
 end
 
-local function registerSuggestion(suggestion)
-    registeredSuggestions[#registeredSuggestions + 1] = suggestion
+local function cloneSuggestion(suggestion)
+    local result = {
+        name = suggestion.name,
+        help = suggestion.help,
+        params = {},
+    }
 
-    if shouldSendSuggestions then
-        TriggerClientEvent("chat:addSuggestion", -1, suggestion.name, suggestion.help, suggestion.params)
+    for index = 1, #(suggestion.params or {}) do
+        result.params[index] = cloneParam(suggestion.params[index])
     end
+
+    return result
+end
+
+local function canSeeSuggestion(target, entry)
+    target = tonumber(target)
+    if not target or target <= 0 then return false end
+    local properties = entry.properties or {}
+    if type(properties.suggestionAccess) == 'function' then
+        local ok, allowed = pcall(properties.suggestionAccess, target, entry.commandName, properties)
+        return ok and allowed == true
+    end
+    return canRunCommand(target, entry.commandName, properties)
+end
+
+local function sendSuggestionEntry(target, entry)
+    if not canSeeSuggestion(target, entry) then return false end
+    local suggestion = entry.suggestion
+    TriggerClientEvent("chat:addSuggestion", target, suggestion.name, suggestion.help, suggestion.params)
+    return true
+end
+
+local function sendEntryToOnlinePlayers(entry)
+    local sent = 0
+    for _, player in ipairs(GetPlayers()) do
+        if sendSuggestionEntry(tonumber(player), entry) then sent = sent + 1 end
+    end
+    return sent
+end
+
+local function registerSuggestion(suggestion, commandName, properties)
+    local entry = {
+        suggestion = suggestion,
+        commandName = commandName,
+        properties = properties or {},
+    }
+
+    for index = 1, #registeredSuggestions do
+        if registeredSuggestions[index].suggestion.name == suggestion.name then
+            registeredSuggestions[index] = entry
+            if shouldSendSuggestions then sendEntryToOnlinePlayers(entry) end
+            return
+        end
+    end
+
+    registeredSuggestions[#registeredSuggestions + 1] = entry
+    if shouldSendSuggestions then sendEntryToOnlinePlayers(entry) end
+end
+
+function commandApi.getSuggestions(target)
+    target = tonumber(target)
+    local result = {}
+    for index = 1, #registeredSuggestions do
+        local entry = registeredSuggestions[index]
+        if not target or canSeeSuggestion(target, entry) then
+            result[#result + 1] = cloneSuggestion(entry.suggestion)
+        end
+    end
+    return result
+end
+
+function commandApi.sendSuggestions(target)
+    target = tonumber(target) or -1
+    if target == -1 then
+        local sent = 0
+        for _, player in ipairs(GetPlayers()) do
+            sent = sent + commandApi.sendSuggestions(tonumber(player))
+        end
+        return sent
+    end
+
+    local sent = 0
+    for index = 1, #registeredSuggestions do
+        if sendSuggestionEntry(target, registeredSuggestions[index]) then sent = sent + 1 end
+    end
+    return sent
+end
+
+function commandApi.hasSuggestion(commandName, target)
+    commandName = tostring(commandName or ""):gsub("^/", ""):lower()
+    for index = 1, #registeredSuggestions do
+        local entry = registeredSuggestions[index]
+        if entry.commandName:lower() == commandName then
+            return target == nil or canSeeSuggestion(target, entry)
+        end
+    end
+    return false
 end
 
 SetTimeout(1000, function()
     shouldSendSuggestions = true
-
-    for i = 1, #registeredSuggestions do
-        local suggestion = registeredSuggestions[i]
-        TriggerClientEvent("chat:addSuggestion", -1, suggestion.name, suggestion.help, suggestion.params)
-    end
+    commandApi.sendSuggestions(-1)
 end)
 
 AddEventHandler("playerJoining", function()
-    local source = source
-
-    for i = 1, #registeredSuggestions do
-        local suggestion = registeredSuggestions[i]
-        TriggerClientEvent("chat:addSuggestion", source, suggestion.name, suggestion.help, suggestion.params)
-    end
+    commandApi.sendSuggestions(source)
 end)
-
 local function createCommand(commandName, properties, cb)
     if type(commandName) ~= "string" or commandName == "" then return false, "missing_name" end
     if type(properties) == "function" and cb == nil then
@@ -261,7 +367,8 @@ local function createCommand(commandName, properties, cb)
 
     local restricted = properties.restricted
     local definitions = properties.params or {}
-    local registerRestricted = restricted and not isWhitelistName(restricted) and true or false
+    -- A validacao abaixo inclui a lista admin, antes das ACEs do comando.
+    local registerRestricted = false
 
     RegisterCommand(commandName, function(source, args, raw)
         if not canRunCommand(source, commandName, properties) then
@@ -288,7 +395,7 @@ local function createCommand(commandName, properties, cb)
     end, registerRestricted)
 
     addAce(restricted, commandName)
-    registerSuggestion(buildSuggestion(commandName, properties))
+    registerSuggestion(buildSuggestion(commandName, properties), commandName, properties)
 
     return true
 end
@@ -316,3 +423,6 @@ return setmetatable(commandApi, {
         return commandApi.add(commandName, properties, cb)
     end,
 })
+
+
+
